@@ -13,6 +13,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
+from conf import WORKDIR, DATE_FORMAT, TRANSFORM_CONF, ID_COL
+from utils import split_df, transform_vars, map_ids
+
 pd.set_option('display.max_columns', None)
 
 # if __name__=="__main__":
@@ -20,7 +23,7 @@ pd.set_option('display.max_columns', None)
 #     print(os.path.dirname(os.path.realpath(__file__)))
 
 
-os.chdir("c:\\Text\\work_search_summer23\\rohlik\\ml_task")
+os.chdir(WORKDIR)
 df_prices = pd.read_csv("ml_task_data.csv")
 
 # %%
@@ -35,43 +38,34 @@ df_prices.describe()
 
 # %%
 # convert date col to datetime format
-df_prices.date = pd.to_datetime(df_prices.date, format="%Y-%m-%d")
+df_prices.date = pd.to_datetime(df_prices.date, format=DATE_FORMAT)
 
 # rename ids
-old_pids = set(df_prices.product_id)
-pids = [str(i) for i in range(len(old_pids))]
-id_map = dict(zip(old_pids, pids))
-
-df_prices.product_id = df_prices.product_id.map(id_map)
+df_prices, id_map = map_ids(df_prices, ID_COL)
+pids = list(id_map.values())
 
 # %% split to individual dfs, necessary for correct pct_change calculation
-pid_df = {}
-for pid in pids:
-    pid_df[pid] = (
-        df_prices
-        .query(f"product_id == '{pid}'")
-        .sort_values("date")
-        )
+pid_df = split_df(df_prices, ID_COL)
 
 
 # %% add percent price change
 
 for pid in pids:
-    pid_df[pid]["sell_price_pct_change"] = pid_df[pid]["sell_price"].pct_change(1)
+    pid_df[pid] = transform_vars(pid_df[pid], TRANSFORM_CONF)
 
 
 # %%
 # check basic statistics per product
-cols = ["sell_price", "margin", "sales", "sell_price_pct_change"]
+stat_cols = set(df_prices.columns) - {ID_COL}
 
 for pid, df in pid_df.items():
     print(pid)
-    print(df[cols].agg(["min", "median", "mean", "max", "count", "std"]))
+    print(df[stat_cols].agg(["min", "median", "mean", "max", "count", "std"]))
 
 
 # %%
 # check dates span
-df_dates_ranges = df_prices.groupby("product_id")[["date"]].agg(["min", "max"])
+df_dates_ranges = df_prices.groupby(ID_COL)[["date"]].agg(["min", "max"])
 print(df_dates_ranges)
 
 # %%
@@ -116,6 +110,9 @@ for pid, df in pid_df.items():
         df.date, df.margin,
         df.date, df.pct_change_scaled,
         linewidth=1)
+    
+    # TODO: make separate axis for sales
+
     plt.title(f"sales and related variables of product {pid}")
     plt.legend(["sell_price", "sales", "margin", "pct_change_scaled"])
     plt.xticks(rotation=45)
@@ -123,6 +120,23 @@ for pid, df in pid_df.items():
     plt.savefig(f"{pid}_sales_related.png", dpi=500)
     plt.close()
 
+# %% explore the sales
+# will be used as an exogenous variable in our model
+
+for pid, df in pid_df.items():
+    changes = round(df["sell_price_pct_change"], 2)  # 1% resolution is enough
+    changes = [c for c in changes if c!= 0]
+    print()
+    print(pid)
+    print(sorted(changes))
+    print(pd.DataFrame(changes).describe())
+    plt.hist(changes, bins=30)
+    plt.title(pid)
+    plt.show()
+    
+# heuristic - price chage <= -10% is a beginning of a sale
+
+    
 
 
 
