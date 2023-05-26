@@ -51,7 +51,7 @@ def split_df(df: pd.DataFrame, id_col: str) -> dict:
 
 
 def transform_vars(
-        df: pd.DataFrame, sort_cols: list, col_pc_td: dict
+        df: pd.DataFrame, transform_conf: dict
     ) -> pd.DataFrame:
     """
     Transforms a datframe of sales and prices data.
@@ -61,11 +61,9 @@ def transform_vars(
     ----------
     df : pd.DataFrame
         DESCRIPTION.
-    sort_cols: list
-        Columns to sort by.
-    col_pc_td : dict
-        Mapping of columns and time window sizes for pct_change.
-        Sample input: {"sell_price": [1]}
+    transform_conf : dict
+        Config of individual transformations to be performed.
+        Sample input: {"pct_change": {"sell_price": [1]}}
 
     Returns
     -------
@@ -73,13 +71,15 @@ def transform_vars(
         Transformed dataframe.
 
     """
-    df = df.sort_values(sort_cols)
+    if sort_cols := transform_conf.get("sort_cols"):
+        df = df.sort_values(sort_cols)
     
+    # `pct_change` transformation
+    col_pc_td = transform_conf.get("pct_change", {})
+    # columns to lists of time lags
     for pcc, tdeltas in col_pc_td.items():
         if pcc in df.columns:
             for td in tdeltas:
                 df[f"{pcc}_pct_change_{td}"] = df[pcc].pct_change(td)
                 
     return df
-
-
