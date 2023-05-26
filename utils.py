@@ -26,6 +26,7 @@ def map_ids(df: pd.DataFrame, id_col: str):
     
     return df, id_map
 
+
 def split_df(df: pd.DataFrame, id_col: str) -> dict:
     """
     Splits dataframe to several smaller dataframes by a selected id column.
@@ -49,7 +50,7 @@ def split_df(df: pd.DataFrame, id_col: str) -> dict:
     return pid_df   
 
 
-def transform_df(
+def transform_vars(
         df: pd.DataFrame, sort_cols: list, col_pc_td: dict
     ) -> pd.DataFrame:
     """
