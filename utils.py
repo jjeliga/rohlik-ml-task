@@ -50,7 +50,7 @@ def split_df(df: pd.DataFrame, id_col: str) -> dict:
     return pid_df   
 
 
-def transform_vars(
+def general_transform(
         df: pd.DataFrame, transform_conf: dict
     ) -> pd.DataFrame:
     """
@@ -73,6 +73,14 @@ def transform_vars(
     """
     if sort_cols := transform_conf.get("sort_cols"):
         df = df.sort_values(sort_cols)
+        
+    # differentiating
+    col_diff_td = transform_conf.get("diff", {})
+    # columns to lists of time lags
+    for dc, tdeltas in col_diff_td.items():
+        if dc in df.columns:
+            for td in tdeltas:
+                df[f"{dc}_diff_{td}"] = df[dc].diff(td)
     
     # `pct_change` transformation
     col_pc_td = transform_conf.get("pct_change", {})
