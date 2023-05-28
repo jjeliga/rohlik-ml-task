@@ -143,7 +143,7 @@ for pid, df in pid_df.items():
     # take only noticeable price changes
     df_changes = df[abs(df.sell_price_pct_change_1) > 0.01]
     # exploring the relation of relative price change and absolute sales change 
-    plt.scatter(df_changes[f"{PRICE_COL}_pct_change_1"], df_changes.[f"{SALES_COL}_pct_change_1"])
+    plt.scatter(df_changes[f"{PRICE_COL}_pct_change_1"], df_changes[f"{SALES_COL}_pct_change_1"])
     plt.xlabel("price pct change")
     plt.ylabel("sales pct change")
     plt.title(f"price dynamics of product {pid}")
@@ -153,17 +153,17 @@ for pid, df in pid_df.items():
 # after inspecting the resulting figures, it seems that there is a linear 
 # or quadratic relationship, we will include both terms in the sarimax model
     
-# %% decomposition
+# %% decomposition - TODO
 
-from statsmodels.tsa.seasonal import seasonal_decompose, STL
+# from statsmodels.tsa.seasonal import seasonal_decompose, STL
 
-# for pid, df in pid_df.items():
-df.set_index(pd.DatetimeIndex(df[DATE_COL], freq="D"), drop=False, inplace=True)
-result = seasonal_decompose(df[SALES_COL], model='additive')
-fig = result.plot()
+# # for pid, df in pid_df.items():
+# df.set_index(pd.DatetimeIndex(df[DATE_COL], freq="D"), drop=False, inplace=True)
+# result = seasonal_decompose(df[SALES_COL], model='additive')
+# fig = result.plot()
 
 
-# STL
+# # STL
 
 
 # %% stationarity tests
