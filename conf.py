@@ -1,14 +1,19 @@
+ID_COL = "product_id"
+DATE_COL = "date"
+PRICE_COL = "sell_price"
+MARGIN_COL = "margin"
+SALES_COL = "sales"
+
 DATE_FORMAT = "%Y-%m-%d"
 
-ID_COL = "product_id"
 TRANSFORM_CONF = {
     "sort_cols": ["date"],
     "diff": {
-        "sales": [1],
-        "sell_price": [1],
+        SALES_COL: [1],
+        PRICE_COL: [1],
         },
     "pct_change": {
-        "sales": [1],
-        "sell_price": [1],
+        SALES_COL: [1],
+        PRICE_COL: [1],
         }
     }

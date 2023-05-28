@@ -50,6 +50,57 @@ def split_df(df: pd.DataFrame, id_col: str) -> dict:
     return pid_df   
 
 
+def init_transform(
+        df: pd.DataFrame,
+        date_col: str,
+        date_format: str,
+        price_col: str,
+        margin_col: str,
+        id_col: str
+        ):
+    """
+    Initital transformation of our data. 
+    Trasforming `date` column to specified format.
+    Adding `buy price` column as a difference of the sell_price and margin.
+    Mapping ids to more readable values.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DF to be transformed.
+    date_col : str
+        Date column name.
+    date_format : str
+        Format of date column.
+    price_col : str
+        Price column name.
+    margin_col : str
+        Margin column name.
+    id_col : str
+        ID column name.
+
+    Returns
+    -------
+    df_prices : TYPE
+        Transformed df.
+    id_map : TYPE
+        DESCRIPTION.
+
+    """
+    if date_col in df.columns:
+        df[date_col] = pd.to_datetime(df[date_col], format=date_format)
+    
+    if price_col in df.columns and margin_col in df.columns:
+        df["buy_price"] = df[price_col] - df[margin_col]
+
+    # map ids fro better readability
+    id_map = None
+    if id_col in df.columns:
+        df, id_map = map_ids(df, id_col)
+
+    return df, id_map
+
+
 def general_transform(
         df: pd.DataFrame, transform_conf: dict
     ) -> pd.DataFrame:

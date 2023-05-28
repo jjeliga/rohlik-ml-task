@@ -24,8 +24,8 @@ WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 os.chdir(WORKDIR)
 
 # importing after the change of working directory
-from conf import DATE_FORMAT, TRANSFORM_CONF, ID_COL
-from utils import split_df, general_transform, map_ids
+from conf import DATE_FORMAT, TRANSFORM_CONF, ID_COL, DATE_COL, MARGIN_COL, SALES_COL, PRICE_COL
+from utils import split_df, general_transform, init_transform
 
 # %% read data and peek
 
@@ -39,11 +39,9 @@ df_prices.info() # check NAs
 df_prices.describe()
 
 # %%
-# convert date col to datetime format
-df_prices.date = pd.to_datetime(df_prices.date, format=DATE_FORMAT)
+# convert date col to datetime format and map ids for better readability
 
-# map ids fro better readability
-df_prices, id_map = map_ids(df_prices, ID_COL)
+df_prices, id_map = init_transform(df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
 pids = list(id_map.values())
 
 # %% split to individual dfs, necessary for correct pct_change calculation
@@ -67,14 +65,14 @@ for pid, df in pid_df.items():
 
 # %%
 # check dates span
-df_dates_ranges = df_prices.groupby(ID_COL)[["date"]].agg(["min", "max"])
+df_dates_ranges = df_prices.groupby(ID_COL)[DATE_COL].agg(["min", "max"])
 print(df_dates_ranges)
 
 # %%
 missing_dates = {}
 for pid, df in pid_df.items():
     dmin, dmax = df_dates_ranges.loc["0"]
-    missing_dates[pid] = pd.date_range(start = dmin, end = dmax).difference(df.date)
+    missing_dates[pid] = pd.date_range(start = dmin, end = dmax).difference(df[DATE_COL])
     
 print(missing_dates)
 
@@ -82,10 +80,10 @@ print(missing_dates)
 # visualisation of missing dates
 for pid, missing in missing_dates.items():
     dmin, dmax = df_dates_ranges.loc[pid]
-    df_full_dates = pd.DataFrame(pd.date_range(start = dmin, end = dmax), columns = ["date"])
-    df_pid_miss_dates = pd.DataFrame(missing, columns = ["date"])
+    df_full_dates = pd.DataFrame(pd.date_range(start = dmin, end = dmax), columns = [DATE_COL])
+    df_pid_miss_dates = pd.DataFrame(missing, columns = [DATE_COL])
     df_pid_miss_dates["miss"] = 1
-    df_full_dates = df_full_dates.merge(df_pid_miss_dates, how="left", on="date")
+    df_full_dates = df_full_dates.merge(df_pid_miss_dates, how="left", on=DATE_COL)
     df_full_dates = df_full_dates.fillna(0)
     plt.plot(df_full_dates.date, df_full_dates.miss)
     plt.title(f"missing dates for product {pid}")
@@ -95,7 +93,7 @@ for pid, missing in missing_dates.items():
 # %% missing dates 2
 
 for pid, df in pid_df.items():
-    tdeltas = [d.days - 1 for d in df.date - df.date.shift(1)]
+    tdeltas = [d.days - 1 for d in df[DATE_COL] - df[DATE_COL].shift(1)]
     tdeltas_miss = [t for t in tdeltas if t > 0]
     plt.hist(tdeltas_miss, bins=20)
     plt.title(f"frequencies of missing days in row for product {pid}")
@@ -111,26 +109,27 @@ for pid, df in pid_df.items():
 
 
 # %% exploring relation of sales and other varibales
+
 # there is a visible spike in sales after a price drop which lasts 
 # otherwise some noise + trend
 
 for pid, df in pid_df.items():
     # only for visualisation purposes of price changes, no interpretation
-    df["pct_change_scaled"] = (df["sell_price_pct_change_1"] * 
-        df["sell_price"].min() / df["sell_price_pct_change_1"].max())
+    df["pct_change_scaled"] = (df[f"{PRICE_COL}_pct_change_1"] * 
+        df[PRICE_COL].min() / df[f"{PRICE_COL}_pct_change_1"].max())
     # creating and saving the plot of sales and other variables
     plt.plot(
-        df.date, df.sell_price,
-        df.date, df.sales,
-        df.date, df.sales_diff_1,
-        df.date, df.margin,
-        df.date, df.pct_change_scaled,
+        df[DATE_COL], df[PRICE_COL],
+        df[DATE_COL], df[SALES_COL],
+        df[DATE_COL], df[f"{SALES_COL}_diff_1"],
+        df[DATE_COL], df[MARGIN_COL],
+        df[DATE_COL], df["pct_change_scaled"],
         linewidth=1)
     
     # TODO: make separate axis for sales
 
     plt.title(f"sales and related variables of product {pid}")
-    plt.legend(["sell_price", "sales", "sales_diff_1", "margin", "sell_price_pct_change_scaled"])
+    plt.legend([PRICE_COL, SALES_COL, f"{SALES_COL}_diff_1", MARGIN_COL, f"{PRICE_COL}_pct_change_scaled"])
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig(f"{pid}_sales_related.png", dpi=500)
@@ -144,7 +143,7 @@ for pid, df in pid_df.items():
     # take only noticeable price changes
     df_changes = df[abs(df.sell_price_pct_change_1) > 0.01]
     # exploring the relation of relative price change and absolute sales change 
-    plt.scatter(df_changes.sell_price_pct_change_1, df_changes.sales_pct_change_1)
+    plt.scatter(df_changes[f"{PRICE_COL}_pct_change_1"], df_changes.[f"{SALES_COL}_pct_change_1"])
     plt.xlabel("price pct change")
     plt.ylabel("sales pct change")
     plt.title(f"price dynamics of product {pid}")
@@ -159,8 +158,8 @@ for pid, df in pid_df.items():
 from statsmodels.tsa.seasonal import seasonal_decompose, STL
 
 # for pid, df in pid_df.items():
-df.set_index(pd.DatetimeIndex(df.date, freq="D"), drop=False, inplace=True)
-result = seasonal_decompose(df.sales, model='additive')
+df.set_index(pd.DatetimeIndex(df[DATE_COL], freq="D"), drop=False, inplace=True)
+result = seasonal_decompose(df[SALES_COL], model='additive')
 fig = result.plot()
 
 
@@ -173,7 +172,7 @@ fig = result.plot()
 
 for pid, df in pid_df.items():
     # testing for trend-stationarity
-    result = adfuller(df.sales, regression="ct")
+    result = adfuller(df[SALES_COL], regression="ct")
     print(pid)
     print('ADF Statistic: %f' % result[0])
     print('p-value: %f' % result[1])
@@ -184,7 +183,7 @@ for pid, df in pid_df.items():
 # %% autocorelatinon
 
 for pid, df in pid_df.items():
-    plot_acf(df.sales)
+    plot_acf(df[SALES_COL])
     plt.title(f"Autocorrelation of product {pid}")
     # plt.s1how()
     plt.savefig(f"{pid}_sales_autocorr.png", dpi=500)
@@ -196,7 +195,7 @@ for pid, df in pid_df.items():
 # %% partial autocorelatinon
 
 for pid, df in pid_df.items():
-    plot_pacf(df.sales)
+    plot_pacf(df[SALES_COL])
     plt.title(f"Partial Autocorrelation of product {pid}")
     # plt.s1how()
     plt.savefig(f"{pid}_sales_pautocorr.png", dpi=500)
