@@ -78,7 +78,7 @@ for pid, df in pid_df.items():
     
 print(missing_dates)
 
-# %%
+# %% missing dates 1
 # visualisation of missing dates
 for pid, missing in missing_dates.items():
     dmin, dmax = df_dates_ranges.loc[pid]
@@ -92,9 +92,22 @@ for pid, missing in missing_dates.items():
     plt.savefig(f"{pid}_miss_dates.png")
     plt.close()
 
-# lets just not care about the missing values for now
-# we can try dropping or performing ffill/interpolation and then compare,
-# Big influence on the final result is not expected
+# %% missing dates 2
+
+for pid, df in pid_df.items():
+    tdeltas = [d.days - 1 for d in df.date - df.date.shift(1)]
+    tdeltas_miss = [t for t in tdeltas if t > 0]
+    plt.hist(tdeltas_miss, bins=20)
+    plt.title(f"frequencies of missing days in row for product {pid}")
+    plt.show()
+    plt.savefig(f"{pid}_dates_gaps_frequencies.png")
+    plt.close()
+
+# Lets just not care about the missing values for now.
+# ARIMA estimation procedure can handle missing observations and inappropriate
+# imputation might distort the estimates.
+# Big influence on the final result is not expected since the missing blocks
+# Are mostly of shorter sizes.
 
 
 # %% exploring relation of sales and other varibales
@@ -141,6 +154,17 @@ for pid, df in pid_df.items():
 # after inspecting the resulting figures, it seems that there is a linear 
 # or quadratic relationship, we will include both terms in the sarimax model
     
+# %% decomposition
+
+from statsmodels.tsa.seasonal import seasonal_decompose, STL
+
+# for pid, df in pid_df.items():
+df.set_index(pd.DatetimeIndex(df.date, freq="D"), drop=False, inplace=True)
+result = seasonal_decompose(df.sales, model='additive')
+fig = result.plot()
+
+
+# STL
 
 
 # %% stationarity tests
