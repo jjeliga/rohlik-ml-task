@@ -5,8 +5,15 @@ import matplotlib.pyplot as plt
 from collections import defaultdict, Counter
 from sklearn.metrics import mean_absolute_percentage_error, mean_absolute_error, mean_squared_error
 from statsforecast import StatsForecast
-from statsforecast.models import AutoARIMA, SeasonalNaive, SeasonalWindowAverage
-
+from statsforecast.models import (
+    AutoARIMA,
+    SeasonalNaive,
+    SeasonalWindowAverage,
+    SeasonalExponentialSmoothingOptimized,
+    HoltWinters,
+    
+    
+)
 WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 
 from conf import DATE_FORMAT, TRANSFORM_CONF, DATE_COL, ID_COL, PRICE_COL, MARGIN_COL, SALES_COL
@@ -17,6 +24,8 @@ from utils import split_df, general_transform, init_transform
 
 TEST_SIZE = 14
 SEASON_LENGTH = 7
+
+
 
 # %% ETL
 
@@ -57,19 +66,22 @@ for pid in pid_df.keys():
             AutoARIMA(
                 max_q=5,
                 max_p=5,
-                max_d=3,
-                max_Q=3,
-                max_P=3,
+                max_d=5,
+                max_Q=5,
+                max_P=5,
                 max_D=1,
+                start_p=0, start_q=0,
+                start_P=0, start_Q=0,
                 season_length=SEASON_LENGTH,
-                nmodels=200,
-                # stepwise=False,
+                nmodels=1000,
                 ),
+            SeasonalExponentialSmoothingOptimized(season_length=SEASON_LENGTH),
+            HoltWinters(season_length=SEASON_LENGTH),
             # Checking against some simpler benchmark methods.
             # These methods do not account for price changes, therefore we will not
             # try to use those for an estimation of sales with respect to price
             # when trying to maximize profit. The solution would be to create a separate
-            # price elasticity model and then try to combine these.
+            # price elasticity model and then try to combine these.            
             SeasonalWindowAverage(season_length=SEASON_LENGTH, window_size=SEASON_LENGTH*2),
             SeasonalNaive(season_length=SEASON_LENGTH) 
             ],
@@ -79,6 +91,11 @@ for pid in pid_df.keys():
     
     sf.fit(pid_df_train_test[pid]["train"])
     fitted_models[pid] = sf
+    
+# %%
+
+mi = fitted_models[pid].fitted_[0][1].model_
+mi["coef"]
 
 # %%
 
@@ -157,10 +174,17 @@ def eval_predictions(sf: StatsForecast, df_test_pred):
 # %% get predictions on test set
 
 test_predictions = {}
+test_predictions_2 = {}
 
 for pid in pid_df.keys():
     # predict sales on test set
-    test_predictions[pid] = predict(fitted_models[pid], TEST_SIZE, pid_df_train_test[pid]["test"], exog_cols)
+    
+    #testing
+    dft = pid_df_train_test[pid]["test"]
+    test_predictions[pid] = predict(fitted_models[pid], TEST_SIZE, dft, exog_cols)
+    
+    dft.loc[0, "sell_price_pct_change_1"] = -20
+    test_predictions_2[pid] = predict(fitted_models[pid], TEST_SIZE, dft, exog_cols)
 
 # %%
 
@@ -174,8 +198,8 @@ for pid, metrics in pid_test_eval_metrics.items():
 
 
 # %%
-
-selection_metrics = ["MAE", "RMSE"]
+# these metrics seem to be most directly correlated with business impact
+selection_metrics = ["ATSD", "MAE"]
 best_models = {
     pid: pick_best_model(mm, selection_metrics) for pid, mm in pid_test_eval_metrics.items()
     }
