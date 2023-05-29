@@ -105,10 +105,20 @@ def pick_best_model_metrics(model_metrics: dict):
                 # list more models in case of tie, not likely to happoen
                 best_vals[metric]["model"] = best_vals[metric].get("model", []) + [model]
                 
-                
-    winners = 
-    win_cnts = Counter()
+    winners_per_metric = [Counter(v["model"]) for v in best_vals.values()]
+    winners = sum(winners_per_metric, Counter())
     
+    best_models, best_n_wins = [], 0
+    for model, n_wins in winners:
+        if n_wins > best_n_wins:
+            best_n_wins = n_wins
+            best_models = [model]
+        elif n_wins == best_n_wins:
+            best_models.append(model)
+            
+    return best_models, best_n_wins
+
+
  
 def eval_predictions(sf: StatsForecast, df_test_pred):
     """
