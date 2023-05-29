@@ -25,78 +25,6 @@ from utils import split_df, general_transform, init_transform
 TEST_SIZE = 14
 SEASON_LENGTH = 7
 
-
-
-# %% ETL
-
-df_prices = pd.read_csv("ml_task_data.csv")
-
-df_prices, id_map = init_transform(
-    df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL
-    )
-pids = list(id_map.values())
-
-pid_df = split_df(df_prices, ID_COL)
-
-for pid in pids:
-    pid_df[pid] = general_transform(pid_df[pid], TRANSFORM_CONF)
-    
-# %% data for testing
-
-exog_cols = [f"{PRICE_COL}_pct_change_1"]
-pid_df_train_test = defaultdict(dict)
-
-for pid, df in pid_df.items():
-    # StatsForecast requires data in a specific format, that's why we select and rename
-    dff = df[[ID_COL, DATE_COL, SALES_COL, *exog_cols]]
-    dff.columns = ["unique_id", "ds", "y", *exog_cols]
-    # drop to account for the lagged variables
-    pid_df_train_test[pid]["train"] = dff[:-TEST_SIZE].dropna() 
-    pid_df_train_test[pid]["test"] =  dff[-TEST_SIZE:]
-    
-
-
-# %%
-
-fitted_models = {}
-
-for pid in pid_df.keys():
-    sf = StatsForecast(
-        models = [
-            AutoARIMA(
-                max_q=5,
-                max_p=5,
-                max_d=5,
-                max_Q=5,
-                max_P=5,
-                max_D=1,
-                start_p=0, start_q=0,
-                start_P=0, start_Q=0,
-                season_length=SEASON_LENGTH,
-                nmodels=1000,
-                ),
-            SeasonalExponentialSmoothingOptimized(season_length=SEASON_LENGTH),
-            HoltWinters(season_length=SEASON_LENGTH),
-            # Checking against some simpler benchmark methods.
-            # These methods do not account for price changes, therefore we will not
-            # try to use those for an estimation of sales with respect to price
-            # when trying to maximize profit. The solution would be to create a separate
-            # price elasticity model and then try to combine these.            
-            SeasonalWindowAverage(season_length=SEASON_LENGTH, window_size=SEASON_LENGTH*2),
-            SeasonalNaive(season_length=SEASON_LENGTH) 
-            ],
-        freq='D',
-        n_jobs=-1
-    )
-    
-    sf.fit(pid_df_train_test[pid]["train"])
-    fitted_models[pid] = sf
-    
-# %%
-
-mi = fitted_models[pid].fitted_[0][1].model_
-mi["coef"]
-
 # %%
 
 
@@ -171,20 +99,124 @@ def eval_predictions(sf: StatsForecast, df_test_pred):
         
     return test_eval_metrics
 
+# %% ETL
+
+df_prices = pd.read_csv("ml_task_data.csv")
+
+df_prices, id_map = init_transform(
+    df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL
+    )
+pids = list(id_map.values())
+
+pid_df = split_df(df_prices, ID_COL)
+
+for pid in pids:
+    pid_df[pid] = general_transform(pid_df[pid], TRANSFORM_CONF)
+    
+# %% data for testing
+
+exog_cols = [f"{PRICE_COL}_pct_change_1"]
+pid_df_train_test = defaultdict(dict)
+
+for pid, df in pid_df.items():
+    # StatsForecast requires data in a specific format, that's why we select and rename
+    dff = df[[ID_COL, DATE_COL, SALES_COL, *exog_cols]]
+    dff.columns = ["unique_id", "ds", "y", *exog_cols]
+    # drop to account for the lagged variables
+    pid_df_train_test[pid]["train"] = dff[:-TEST_SIZE].dropna() 
+    pid_df_train_test[pid]["test"] =  dff[-TEST_SIZE:]
+    
+
+
+# %%
+
+fitted_models = {}
+
+for pid in pid_df.keys():
+    sf = StatsForecast(
+        models = [
+            AutoARIMA(
+                max_q=5,  # MA order
+                max_p=0,  # AR order
+                max_d=0,  # difference order
+                max_Q=1,
+                max_P=1,
+                max_D=1,
+                start_p=0, start_q=0,
+                start_P=0, start_Q=0,
+                season_length=SEASON_LENGTH,
+                # nmodels=1000,
+                ),
+            SeasonalExponentialSmoothingOptimized(season_length=SEASON_LENGTH),
+            HoltWinters(season_length=SEASON_LENGTH),
+            # Checking against some simpler benchmark methods.
+            # These methods do not account for price changes, therefore we will not
+            # try to use those for an estimation of sales with respect to price
+            # when trying to maximize profit. The solution would be to create a separate
+            # price elasticity model and then try to combine these.            
+            SeasonalWindowAverage(season_length=SEASON_LENGTH, window_size=SEASON_LENGTH*2),
+            SeasonalNaive(season_length=SEASON_LENGTH) 
+            ],
+        freq='D',
+        n_jobs=-1
+    )
+    
+    sf.fit(pid_df_train_test[pid]["train"])
+    fitted_models[pid] = sf
+# %%
+
+fitted_models["0"].fitted_[0][0].model_["coef"]
+
+
+# %%
+
+from prophet import Prophet
+from workalendar.europe import CzechRepublic
+
+pid="1"
+dfte = pid_df_train_test[pid]["test"]
+dftr = pid_df_train_test[pid]["train"]
+
+cze = CzechRepublic()
+
+start, end = min(dftr.index).year, max(dfte.index).year + 1  # +1 to ensure future
+cze_holidays = []
+for year in range(start, end + 1):
+    cze_holidays += cze.holidays(year)
+
+holidays = pd.DataFrame(cze_holidays, columns=["ds", "holiday"])
+holidays["lower_window"] = 0
+holidays["upper_window"] = 1
+
+
+m = Prophet(holidays=holidays)
+m.add_regressor("sell_price_pct_change_1")
+m.fit(dftr[["ds", "y", "sell_price_pct_change_1"]])
+
+forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
+forecast.yhat
+dfte.y
+
+dfte.iloc[7, -1] = -0.2
+dfte.sell_price_pct_change_1
+
+forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
+forecast.yhat
+dfte.y
+
+
+
+
 # %% get predictions on test set
 
 test_predictions = {}
-test_predictions_2 = {}
 
 for pid in pid_df.keys():
     # predict sales on test set
     
     #testing
-    dft = pid_df_train_test[pid]["test"]
+    dft = pid_df_train_test[pid]["test"].copy()
     test_predictions[pid] = predict(fitted_models[pid], TEST_SIZE, dft, exog_cols)
-    
-    dft.loc[0, "sell_price_pct_change_1"] = -20
-    test_predictions_2[pid] = predict(fitted_models[pid], TEST_SIZE, dft, exog_cols)
 
 # %%
 
@@ -194,7 +226,9 @@ for pid, test_prediction in test_predictions.items():
     
 for pid, metrics in pid_test_eval_metrics.items():
     print(pid)
-    print(metrics)
+    for mod, met in metrics.items():
+        print(mod)
+        print(met)
 
 
 # %%
