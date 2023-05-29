@@ -41,7 +41,8 @@ for pid, df in pid_df.items():
     # StatsForecast requires data in a specific format, that's why we select and rename
     dff = df[[ID_COL, DATE_COL, SALES_COL, *exog_cols]]
     dff.columns = ["unique_id", "ds", "y", *exog_cols]
-    pid_df_train_test[pid]["train"] = dff[1:-TEST_SIZE]
+    # drop to account for the lagged variables
+    pid_df_train_test[pid]["train"] = dff[:-TEST_SIZE].dropna() 
     pid_df_train_test[pid]["test"] =  dff[-TEST_SIZE:]
     
 
@@ -60,8 +61,15 @@ for pid in pid_df.keys():
                 max_Q=3,
                 max_P=3,
                 max_D=1,
-                season_length=SEASON_LENGTH),
-            # just to check against a simpler method
+                season_length=SEASON_LENGTH,
+                nmodels=200,
+                # stepwise=False,
+                ),
+            # Checking against some simpler benchmark methods.
+            # These methods do not account for price changes, therefore we will not
+            # try to use those for an estimation of sales with respect to price
+            # when trying to maximize profit. The solution would be to create a separate
+            # price elasticity model and then try to combine these.
             SeasonalWindowAverage(season_length=SEASON_LENGTH, window_size=SEASON_LENGTH*2),
             SeasonalNaive(season_length=SEASON_LENGTH) 
             ],
@@ -86,16 +94,21 @@ def predict(sf: StatsForecast, h:int, df_test: pd.DataFrame, exog_cols: list, le
 
     return df_test.merge(forecast_df, on=["unique_id", "ds"])
 
-def pick_best_model_metrics(model_metrics: dict):
+
+def pick_best_model(models_metrics: dict, eval_metrics: list):
     """
-    Expects input in the form {model: {metric: value}}.
     Finds the model which attains the lowest (!) scores most of the time.
-    Returns multiple models in case of ties.
+    Expects input data in the form {model: {metric: value}} and list of metrics
+    names considered for model selection.
+    Returns multiple models in case of ties in no of wins.
     """
     best_vals = defaultdict(dict)
     
-    for model, metrics in model_metrics.items():
+    for model, metrics in models_metrics.items():
         for metric, val in metrics.items():
+            if metric not in eval_metrics:
+                continue
+            # not very elegant but safe and readable approach
             curr_best = best_vals.get(metric, {}).get("val", np.inf)
             # check for new best score for this metric
             if val < curr_best:
@@ -105,19 +118,20 @@ def pick_best_model_metrics(model_metrics: dict):
                 # list more models in case of tie, not likely to happoen
                 best_vals[metric]["model"] = best_vals[metric].get("model", []) + [model]
                 
+    # count wins
     winners_per_metric = [Counter(v["model"]) for v in best_vals.values()]
     winners = sum(winners_per_metric, Counter())
     
+    # select best model
     best_models, best_n_wins = [], 0
-    for model, n_wins in winners:
+    for model, n_wins in winners.items():
         if n_wins > best_n_wins:
             best_n_wins = n_wins
             best_models = [model]
         elif n_wins == best_n_wins:
             best_models.append(model)
             
-    return best_models, best_n_wins
-
+    return best_models
 
  
 def eval_predictions(sf: StatsForecast, df_test_pred):
@@ -127,33 +141,46 @@ def eval_predictions(sf: StatsForecast, df_test_pred):
     """
     model_names = [str(s) for s in sf.fitted_[0]]
 
-    # calc MAE, MAPE (both have good interpretation) and RMSE
+    # Calculate absolute total sum difference (ATSD),  MAE, MAPE (both have good interpretation) and RMSE.
+    # ATSD is not a standard metric, but might be useful for a setting where only
+    # the absolute volume over a longer period of time is of interest
+    
     test_eval_metrics = defaultdict(dict)
     for model in model_names:
+        test_eval_metrics[model]["ATSD"] = abs(df_test_pred.y.sum() - df_test_pred[model].sum())
         test_eval_metrics[model]["MAE"] = mean_absolute_error(df_test_pred.y, df_test_pred[model])
         test_eval_metrics[model]["MAPE"] = mean_absolute_percentage_error(df_test_pred.y, df_test_pred[model]) * 100
         test_eval_metrics[model]["RMSE"] = np.sqrt(mean_squared_error(df_test_pred.y, df_test_pred[model]))
         
     return test_eval_metrics
 
+# %% get predictions on test set
 
-
-# %%
-
-pid_test_eval_metrics
+test_predictions = {}
 
 for pid in pid_df.keys():
     # predict sales on test set
-    test_prediction = predict(fitted_models[pid], TEST_SIZE, pid_df_train_test[pid]["test"], exog_cols)
+    test_predictions[pid] = predict(fitted_models[pid], TEST_SIZE, pid_df_train_test[pid]["test"], exog_cols)
+
+# %%
+
+pid_test_eval_metrics = {}
+for pid, test_prediction in test_predictions.items():
     pid_test_eval_metrics[pid] = eval_predictions(fitted_models[pid], test_prediction)
     
-
+for pid, metrics in pid_test_eval_metrics.items():
+    print(pid)
+    print(metrics)
 
 
 # %%
 
-dff_test_pred = predict(sf, dff_test, exog_cols, TEST_SIZE)
-models_test_eval_metrics = eval_predictions(sf, dff_test_pred)
+selection_metrics = ["MAE", "RMSE"]
+best_models = {
+    pid: pick_best_model(mm, selection_metrics) for pid, mm in pid_test_eval_metrics.items()
+    }
+print(best_models)
+
 
 # %%
 
