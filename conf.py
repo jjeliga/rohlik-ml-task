@@ -3,6 +3,7 @@ DATE_COL = "date"
 PRICE_COL = "sell_price"
 MARGIN_COL = "margin"
 SALES_COL = "sales"
+BUY_PRICE_COL = "buy_price"
 
 PROMOTION_CONF = {
     # at mostr one month of special price event duration

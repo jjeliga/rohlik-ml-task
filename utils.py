@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from workalendar.europe import CzechRepublic
 
+from conf import BUY_PRICE_COL
+
 
 def map_ids(df: pd.DataFrame, id_col: str):
     """
@@ -91,6 +93,17 @@ def add_czech_holidays(df: pd.DataFrame, date_col: str, date_format: str):
     return df
 
 
+def is_weekend(df: pd.DataFrame, date_col: str):
+    """
+    Adds `is_weekend` column to df, designating weekend days (1/0 indicator)
+    """
+    df["is_weekend"] = df[date_col].apply(
+        lambda x: 1 if x.day_name() in ['Saturday', 'Sunday'] else 0
+        )
+    
+    return df
+
+
 def init_transform(
         df: pd.DataFrame,
         date_col: str,
@@ -128,14 +141,11 @@ def init_transform(
     """
     if date_col in df.columns:
         df[date_col] = pd.to_datetime(df[date_col], format=date_format)
-        df["is_weekend"] = df[date_col].apply(
-            lambda x: 1 if x.day_name() in ['Saturday', 'Sunday'] else 0
-            )
-        
+        df = is_weekend(df, date_col)
         df = add_czech_holidays(df, date_col, date_format)
     
     if price_col in df.columns and margin_col in df.columns:
-        df["buy_price"] = df[price_col] - df[margin_col]
+        df[BUY_PRICE_COL] = df[price_col] - df[margin_col]
 
     # map ids fro better readability
     id_map = None
@@ -295,7 +305,7 @@ def general_transform(
     if price_col in df.columns:
         df = identify_promotions(df, prom_conf)
     else:
-        print("Sales indicator not calculated, update your transformation config for pct_change by {PRICE_COL: [1]}")
+        print("Promotions  not calculated")
         
                 
     return df

@@ -13,7 +13,6 @@ from statsforecast.models import (
     SeasonalExponentialSmoothingOptimized,
     HoltWinters,
 )
-WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 
 from conf import (
     DATE_FORMAT,
@@ -155,7 +154,7 @@ def plot_fit_predict(sf, pid, fitted_values, test_predictions, n_fitted=90):
     df_res_vis[["sales", *model_names]].plot(linewidth=.5, alpha=.7)
     plt.fill_between(df_res_vis.index, df_res_vis["AutoARIMA-lo-95"], df_res_vis["AutoARIMA-hi-95"], alpha=.1)
     plt.axvline(x=df_insample_fitted.ds.iloc[-1], linewidth=.6, color="black")
-    plt.title("fitted and predicted values of product {pid}\n separated by veritcal line")
+    plt.title(f"fitted and predicted values of product {pid}\n separated by veritcal line")
     plt.savefig(f"plots/{pid}_fit_predict.png", dpi=500)
 
 
@@ -177,6 +176,10 @@ for pid in pid_df.keys():
 # %% data for testing
 
 exog_cols = ["is_weekend", "holiday", "price_event"]  # f"{PRICE_COL}_pct_change_1" ommited for now
+
+with open("exog_cols.json", "w") as fw:
+    json.dump(exog_cols, fw)
+
 pid_df_train_test = defaultdict(dict)
 
 for pid, df in pid_df.items():
@@ -228,8 +231,8 @@ for pid in pid_df.keys():
 # currently no versioning
 # if there is a pickled model in the repository,
 # then that one should be considered a champion
-with open("model.pickle", "wb") as outfile:
-    pickle.dump(sf, outfile)
+with open("models.pickle", "wb") as outfile:
+    pickle.dump(fitted_models, outfile)
 
 # %% look at arima coefficients
 
