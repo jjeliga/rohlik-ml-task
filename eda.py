@@ -122,7 +122,8 @@ for pid, df in pid_df.items():
 # %% exploring relation of sales and other varibales
 
 # there is a visible spike in sales after a price drop which lasts 
-# otherwise some noise + trend
+# otherwise looks rather noisy
+# visible changes after the beginning of covid pandemia, but the not very significant
 
 for pid, df in pid_df.items():
     # only for visualisation purposes of price changes, no interpretation
@@ -132,7 +133,6 @@ for pid, df in pid_df.items():
     plt.plot(
         df[DATE_COL], df[PRICE_COL],
         df[DATE_COL], df[SALES_COL],
-        df[DATE_COL], df[f"{SALES_COL}_diff_1"],
         df[DATE_COL], df[MARGIN_COL],
         df[DATE_COL], df["pct_change_scaled"],
         linewidth=1)
@@ -140,30 +140,31 @@ for pid, df in pid_df.items():
     # TODO: make separate axis for sales
 
     plt.title(f"sales and related variables of product {pid}")
-    plt.legend([PRICE_COL, SALES_COL, f"{SALES_COL}_diff_1", MARGIN_COL, f"{PRICE_COL}_pct_change_scaled"])
+    plt.legend([PRICE_COL, SALES_COL, MARGIN_COL, f"{PRICE_COL}_pct_change_scaled"])
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig(f"plots/{pid}_sales_related.png", dpi=500)
     plt.close()
 
 # %% exploring promotions 1
-for pid, df in pid_df.items():
-    df[[f"{PRICE_COL}_pct_change_1", "is_promotion"]].plot(title=f"promotions of product {pid}")
+# significant change of price will be used as an exogenous variable in sarimax model
 
-
-# %% exploring promotions 2
-# will be used as an exogenous variable in sarimax model
 
 sale_change_col = f"{SALES_COL}_diff_1"
-pricee_change_col = f"{PRICE_COL}_pct_change_1"
+pricee_change_col = f"{PRICE_COL}_diff_1"
 
+# try different perspective, not very useful
+# sale_change_col = f"{SALES_COL}_pct_change_1"
+# pricee_change_col = f"{PRICE_COL}_pct_change_1"
+
+# exploring only immediate influence
 for pid, df in pid_df.items():
     # take only noticeable price changes
     df_changes = df[abs(df.sell_price_pct_change_1) > 0.1]
     # exploring the relation of relative price change and absolute sales change 
     plt.scatter(df_changes[pricee_change_col], df_changes[sale_change_col])
-    plt.xlabel("price pct change")
-    plt.ylabel("sales pct change")
+    plt.xlabel(pricee_change_col)
+    plt.ylabel(sale_change_col)
     plt.title(f"price dynamics of product {pid}")
     plt.savefig(f"plots/{pid}_price_change_dynamics.png", dpi=500)
     plt.close()
@@ -172,23 +173,16 @@ for pid, df in pid_df.items():
 # linear relationship between price pct difference and sales difference
 # for a more significant changes in price
 # Might be caused by a constant pool size of price sensitive individuals.
-    
-# %% decomposition - TODO
 
-# from statsmodels.tsa.seasonal import seasonal_decompose, STL
-
-# # for pid, df in pid_df.items():
-# df.set_index(pd.DatetimeIndex(df[DATE_COL], freq="D"), drop=False, inplace=True)
-# result = seasonal_decompose(df[SALES_COL], model='additive')
-# fig = result.plot()
-
-
-# # STL
-
+# %% exploring promotions 2
+for pid, df in pid_df.items():
+    # df[[f"{PRICE_COL}_pct_change_1", "price_event_pct"]].plot(title=f"promotions of product {pid}")
+    df[[f"{PRICE_COL}", "price_event"]].plot(title=f"promotions of product {pid}")
 
 # %% stationarity tests
 
 # the results indicate that sales ts for products 0-3 might be (trend-)stationary
+# when looking at plots of their sales, they seem to be little more than a WN
 
 for pid, df in pid_df.items():
     # testing for trend-stationarity
@@ -223,6 +217,17 @@ for pid, df in pid_df.items():
 # partial autocorrelations fade rather quickly for most, usualy within lag of 5
 # gives some estimate of the order of the AR part
 
+# %% decomposition - TODO
+
+# from statsmodels.tsa.seasonal import seasonal_decompose, STL
+
+# # for pid, df in pid_df.items():
+# df.set_index(pd.DatetimeIndex(df[DATE_COL], freq="D"), drop=False, inplace=True)
+# result = seasonal_decompose(df[SALES_COL], model='additive')
+# fig = result.plot()
+
+
+# # STL
 
 
 

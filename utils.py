@@ -1,7 +1,7 @@
+import numpy as np
 import pandas as pd
 from workalendar.europe import CzechRepublic
 
-from conf import PRICE_COL
 
 def map_ids(df: pd.DataFrame, id_col: str):
     """
@@ -145,7 +145,7 @@ def init_transform(
     return df
     
 
-def identify_promotions(df: pd.DataFrame, price_change_col: str, price_drop_threshold: float):
+def identify_promotions(df: pd.DataFrame, prom_conf: float):
     """
     Tries to identify promotion based on price changes.
 
@@ -154,7 +154,7 @@ def identify_promotions(df: pd.DataFrame, price_change_col: str, price_drop_thre
     df : pd.DataFrame
         DESCRIPTION.
     price_change_col: str
-        name of the column containing price change data
+        Name of the column containing price change data.
     prom_conf : dict
         Configuration for promotion identification.
 
@@ -164,37 +164,80 @@ def identify_promotions(df: pd.DataFrame, price_change_col: str, price_drop_thre
         Transformed dataframe.
 
     """
-    # Approximation, but considered good enough for now.
-    # Promotion is expected to last max prom_conf["max_duration"] days.
-    # We consider price change to be a promotion only if cumulative sum
-    # of % price changes over the max promotion length is < prom_conf["price_drop_threshold"]
+    price_col = prom_conf["price_col"]
+    price_change_col = f"{price_col}_diff_1"
+    price_change_threshold = prom_conf["price_change_threshold"]
+    event_dur_threshold = prom_conf["max_duration"]
     
-    
+    # Old method, easy to compute but not very precise
     # roll_pct_change = df[price_change_col].rolling(prom_conf["max_duration"]).sum()
     # df["is_promotion"] = (roll_pct_change < prom_conf["price_drop_threshold"]) * 1
     
-    # clumsy method, but fast enough for now
-    # could look into pandas expanding apply
-    promotions = []
-    cum_discount = 0
-    event_dur = 0
-    for pc in df[price_change_col].values:
-        if pc:
-            cum_discount += pc
-            
-        if cum_discount < price_drop_threshold:
-            promotions.append(cum_discount)
-            event_dur += 1
-        elif 
-        else:
-            is_promotion.append(0)
-            
-        # we want to ignore any 
-        if cum_discount > -.02:
-            cum_discount = 0
+    
+    # Approximation, but considered good enough for now.
+    # We consider price change to be significant only if cumulative sum
+    # of price changes stays greater in absolute value than 
+    # prom_conf["price_drop_threshold"] fraction of last pre-event price.
+    # If the price change event lasts longer than prom_conf["max_duration"] then
+    # the current state becomes the new normal.
+    
+    if price_change_col not in df.columns:
+        df[price_change_col] = df[price_col].diff(1)
         
     
-    
+    # clumsy method, but fast enough for now
+    # could look into pandas expanding apply
+    price_changes_big = []
+    price_changes_big_pct = []
+    cum_change = 0
+    event_dur = 0
+    last_norm_price = np.inf
+
+    for price, pc in df[[price_col, price_change_col]].values:
+        sign_switch = False
+
+        if pc > 0 or pc < 0:
+            cc_past = cum_change
+            cum_change += pc
+            # check for change of event direction
+            if cc_past * cum_change < 0:
+                sign_switch = True
+                
+            
+        if abs(cum_change) > last_norm_price * price_change_threshold:
+            # record the event if deviation from the pre-event price is greater
+            # than `price_drop_threshold` fraction of the `last_norm_price`
+            if event_dur > event_dur_threshold:
+                # We set a time limit on the price change event influence
+                # The current price becomes the norm
+                last_norm_price = price
+                cum_change = 0
+                event_dur = 0
+                price_changes_big.append(0)
+                price_changes_big_pct.append(0)
+            else:
+                price_changes_big.append(cum_change)
+                price_changes_big_pct.append(cum_change / last_norm_price)
+                if sign_switch:
+                    # prices can go from big de/increase directly to in/decrease
+                    # we record the change, but start a new event
+                    event_dur = 0        
+                event_dur += 1
+        else:
+            # The cumulative change is not big enough to be considered a price-event
+            if abs(cum_change) < last_norm_price * (price_change_threshold / 3):
+                # the price event might begin slowly in the course of a few consecutive days
+                # we reset the cumulative values only if the changes are actualy small
+                last_norm_price = price
+                cum_change = 0
+            
+            # record no change and event duration
+            event_dur = 0
+            price_changes_big.append(0)
+            price_changes_big_pct.append(0)
+            
+    df["price_event"] = price_changes_big
+    df["price_event_pct"] = price_changes_big_pct
     
     return df
 
@@ -249,8 +292,8 @@ def general_transform(
                 df[f"{pcc}_pct_change_{td}"] = df[pcc].pct_change(td)
                 
                     
-    if f"{price_col}_pct_change_1" in df.columns:
-        df = identify_promotions(df, f"{price_col}_pct_change_1", prom_conf)
+    if price_col in df.columns:
+        df = identify_promotions(df, prom_conf)
     else:
         print("Sales indicator not calculated, update your transformation config for pct_change by {PRICE_COL: [1]}")
         
