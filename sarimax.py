@@ -37,16 +37,20 @@ SEASON_LENGTH = 7
 # %%
 
 
-def predict(sf: StatsForecast, h:int, df_test: pd.DataFrame, exog_cols: list, level:list=[95]): 
+def predict(sf: StatsForecast, df_train: pd.DataFrame, df_test: pd.DataFrame, exog_cols: list, level:list=[95]): 
     """
-    Get prediction of all models in `sf` for the next `h`.
+    Get prediction of all models in `sf` for all dates in df_test and fitted values.
     Uses exogenous variables contained in `df_test` if applicable.
     `level` is a list of confidence intervals to be calculated if applicable.
     """
-    X_df = df_test.drop(["y"], 1) if exog_cols else None    
-    forecast_df = sf.predict(h=h, X_df=X_df, level=level) 
+    h = df_test.shape[0]
+    X_df = df_test[["unique_id", "ds", *exog_cols]] if exog_cols else None    
+    forecast_df = sf.forecast(h=h, df=df_train, X_df=X_df, level=level, fitted=True) 
+    df_p = df_test.merge(forecast_df, on=["unique_id", "ds"])
+    
+    fitted = sf.forecast_fitted_values()
 
-    return df_test.merge(forecast_df, on=["unique_id", "ds"])
+    return fitted, df_p
 
 
 def pick_best_model(models_metrics: dict, eval_metrics: list):
@@ -87,26 +91,42 @@ def pick_best_model(models_metrics: dict, eval_metrics: list):
             
     return best_models
 
- 
-def eval_predictions(sf: StatsForecast, df_test_pred):
+
+
+def _eval_predictions_single(sf: StatsForecast, df_pred: pd.DataFrame):
     """
     Basic prediction quality evaluation for all models fitted in `sf`.
-    `df_test_pred` should contain predictions for all models present in sf.
+    `df_pred` should contain predictions for all models present in sf.
     """
-    model_names = [str(s) for s in sf.fitted_[0]]
+    model_names = [str(m) for m in sf.models]
 
     # Calculate absolute total sum difference (ATSD),  MAE, MAPE (both have good interpretation) and RMSE.
     # ATSD is a custom metric, might be useful for a setting where only
     # the absolute volume over a longer period of time is of interest
     
-    test_eval_metrics = defaultdict(dict)
+    model_eval_metrics = defaultdict(dict)
     for model in model_names:
-        test_eval_metrics[model]["ATSD"] = abs(df_test_pred.y.sum() - df_test_pred[model].sum())
-        test_eval_metrics[model]["MAE"] = mean_absolute_error(df_test_pred.y, df_test_pred[model])
-        test_eval_metrics[model]["MAPE"] = mean_absolute_percentage_error(df_test_pred.y, df_test_pred[model]) * 100
-        test_eval_metrics[model]["RMSE"] = np.sqrt(mean_squared_error(df_test_pred.y, df_test_pred[model]))
+        model_eval_metrics[model]["ATSD"] = abs(df_pred.y.sum() - df_pred[model].sum())
+        model_eval_metrics[model]["MAE"] = mean_absolute_error(df_pred.y, df_pred[model])
+        model_eval_metrics[model]["MAPE"] = mean_absolute_percentage_error(df_pred.y, df_pred[model]) * 100
+        model_eval_metrics[model]["RMSE"] = np.sqrt(mean_squared_error(df_pred.y, df_pred[model]))
         
-    return test_eval_metrics
+    return model_eval_metrics
+
+
+def eval_predictions(fitted_models: dict, predictions: dict):
+    pid_eval_metrics = {}
+    for pid, prediction in predictions.items():
+        pid_eval_metrics[pid] = _eval_predictions_single(fitted_models[pid], prediction.dropna())
+        
+    # quick overview
+    for pid, metrics in pid_eval_metrics.items():
+        print(pid)
+        for mod, met in metrics.items():
+            print(mod)
+            print(met)
+            
+    return pid_eval_metrics
 
 # %% ETL
 
@@ -138,7 +158,7 @@ for pid, df in pid_df.items():
     
 
 
-# %%
+# %% fit various ts models to train data
 
 fitted_models = {}
 
@@ -164,7 +184,7 @@ for pid in pid_df.keys():
             # try to use those for an estimation of sales with respect to price
             # when trying to maximize profit. The solution would be to create a separate
             # price elasticity model and then try to combine these.            
-            SeasonalWindowAverage(season_length=SEASON_LENGTH, window_size=SEASON_LENGTH*2),
+          #  SeasonalWindowAverage(season_length=SEASON_LENGTH, window_size=SEASON_LENGTH*2),
             SeasonalNaive(season_length=SEASON_LENGTH) 
             ],
         freq='D',
@@ -173,7 +193,7 @@ for pid in pid_df.keys():
     
     sf.fit(pid_df_train_test[pid]["train"])
     fitted_models[pid] = sf
-# %%
+# %% look at arima coefficients
 
 fitted_models["0"].fitted_[0][0].model_["coef"]
 
@@ -207,55 +227,62 @@ fitted_models["0"].fitted_[0][0].model_["coef"]
 
 
 
-# %% get predictions on test set
+# %% get predictions on test set and fitted values
 
+fitted_values = {}
 test_predictions = {}
 
 for pid in pid_df.keys():
-    # predict sales on test set
-    
-    #testing
-    dft = pid_df_train_test[pid]["test"].copy()
-    test_predictions[pid] = predict(fitted_models[pid], TEST_SIZE, dft, exog_cols)
+    # obtain fitted values and predict sales on test set
+    dftr = pid_df_train_test[pid]["train"].copy()
+    dfte = pid_df_train_test[pid]["test"].copy()
+    fv, tp = predict(fitted_models[pid], dftr, dfte, exog_cols)
+    fitted_values[pid] = fv
+    test_predictions[pid] = tp
 
-# %%
+# %% evaluate models fit
 
-pid_test_eval_metrics = {}
-for pid, test_prediction in test_predictions.items():
-    pid_test_eval_metrics[pid] = eval_predictions(fitted_models[pid], test_prediction)
-    
-for pid, metrics in pid_test_eval_metrics.items():
-    print(pid)
-    for mod, met in metrics.items():
-        print(mod)
-        print(met)
+# AutoARIMA with exogenous variables attains the best scores/fit according to our metrics
+fit_eval_metrics = eval_predictions(fitted_models, fitted_values)
+
+
+# %% evaluate models on test data
+
+# It seems that the very best out-of-sample performing models are usually the most simple ones.
+# However, only the ARIMA model directly incorporates the influence of exogenous variables so
+# we do not need to combine the sales forecast with another methods using price elasticity
+# of demand which would be neded for revenue optimisation
+
+test_eval_metrics = eval_predictions(fitted_models, test_predictions)
 
 
 # %%
 # these metrics seem to be most directly correlated with business impact
-selection_metrics = ["ATSD", "MAE"]
-best_models = {
-    pid: pick_best_model(mm, selection_metrics) for pid, mm in pid_test_eval_metrics.items()
-    }
-print(best_models)
+
+# selection_metrics = ["ATSD", "MAE"]
+# best_models = {
+#     pid: pick_best_model(mm, selection_metrics) for pid, mm in pid_test_eval_metrics.items()
+#     }
+# print(best_models)
 
 
 # %%
-
 
 dff_test_pred.set_index("ds", inplace=True)
 dff_test_pred[['y', "AutoARIMA"]].plot()
 
 # %%
-plot_cols = ["y", "ds", "AutoARIMA", "AutoARIMA-lo-95", "AutoARIMA-hi-95"]
+
+
+model_names = [str(m) for m in sf.models]
+
+plot_cols = ["y", "ds", *model_names, "AutoARIMA-lo-95", "AutoARIMA-hi-95"]
 
 # surprisingly slow, investigate better method to obtain the data
-f_df = sf.forecast(h=14, X_df=X_df, fitted=True, level=[95]) 
-insample_fcsts_df = sf.forecast_fitted_values()
 
-insample_fcsts_df = insample_fcsts_df[-50:]
+insample_fcsts_df = [-50:]
 
-df_res_vis = pd.concat([insample_fcsts_df[plot_cols], dff_test_pred[plot_cols]])
+df_res_vis = pd.concat([insample_fcsts_df[plot_cols], df_test_pred[plot_cols]])
 
 df_res_vis.rename({"y": "sales", "AutoARIMA": "estimate", "ds": "date"}, axis=1, inplace=True)
 df_res_vis.set_index("date", inplace=True)
@@ -265,6 +292,7 @@ plt.fill_between(df_res_vis.index, df_res_vis["AutoARIMA-lo-95"], df_res_vis["Au
 plt.axvline(x=insample_fcsts_df.ds[-1], linewidth=.3)
 plt.title("fitted and predicted values")
 plt.savefig("test_predict.png", dpi=500)
+
 
 
 
