@@ -152,22 +152,26 @@ for pid, df in pid_df.items():
 
 
 # %% exploring promotions 2
-# will be used as an exogenous variable in our model
-# the baseline model will be sarimax
+# will be used as an exogenous variable in sarimax model
+
+sale_change_col = f"{SALES_COL}_diff_1"
+pricee_change_col = f"{PRICE_COL}_pct_change_1"
 
 for pid, df in pid_df.items():
     # take only noticeable price changes
-    df_changes = df[abs(df.sell_price_pct_change_1) > 0.01]
+    df_changes = df[abs(df.sell_price_pct_change_1) > 0.1]
     # exploring the relation of relative price change and absolute sales change 
-    plt.scatter(df_changes[f"{PRICE_COL}_pct_change_1"], df_changes[f"{SALES_COL}_pct_change_1"])
+    plt.scatter(df_changes[pricee_change_col], df_changes[sale_change_col])
     plt.xlabel("price pct change")
     plt.ylabel("sales pct change")
     plt.title(f"price dynamics of product {pid}")
     plt.savefig(f"plots/{pid}_price_change_dynamics.png", dpi=500)
     plt.close()
     
-# after inspecting the resulting figures, it seems that there is a linear 
-# or quadratic relationship, we will include both terms in the sarimax model
+# After inspecting the resulting figures, it seems that there is a more or less
+# linear relationship between price pct difference and sales difference
+# for a more significant changes in price
+# Might be caused by a constant pool size of price sensitive individuals.
     
 # %% decomposition - TODO
 
