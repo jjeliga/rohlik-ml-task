@@ -22,36 +22,47 @@ WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 # %%
 
 os.chdir(WORKDIR)
+os.makedirs("plots", exist_ok=True)
 
 # importing after the change of working directory
-from conf import DATE_FORMAT, TRANSFORM_CONF, ID_COL, DATE_COL, MARGIN_COL, SALES_COL, PRICE_COL
+from conf import (
+    DATE_FORMAT,
+    TRANSFORM_CONF,
+    PROMOTION_CONF,
+    ID_COL,
+    DATE_COL,
+    MARGIN_COL,
+    SALES_COL,
+    PRICE_COL
+   )
 from utils import split_df, general_transform, init_transform
 
 # %% read data and peek
 
-df_prices = pd.read_csv("ml_task_data.csv")
-print(df_prices.head())
+df_raw = pd.read_csv("ml_task_data.csv")
+print(df_raw.head())
 
 # %%
-df_prices.info() # check NAs
+df_raw.info() # check NAs
 
 # %%
-df_prices.describe()
+df_raw.describe()
 
 # %%
 # convert date col to datetime format and map ids for better readability
 
-df_prices, id_map = init_transform(df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
-pids = list(id_map.values())
+df_prices = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
 
 # %% split to individual dfs, necessary for correct pct_change calculation
 pid_df = split_df(df_prices, ID_COL)
 
 
-# %% add percent price change
+# %% make transformations and create feature
 
-for pid in pids:
-    pid_df[pid] = general_transform(pid_df[pid], TRANSFORM_CONF)
+for pid in pid_df.keys():
+    pid_df[pid] = general_transform(
+        pid_df[pid], TRANSFORM_CONF, DATE_COL, PRICE_COL, PROMOTION_CONF
+        )
 
 
 # %%
@@ -87,7 +98,7 @@ for pid, missing in missing_dates.items():
     df_full_dates = df_full_dates.fillna(0)
     plt.plot(df_full_dates.date, df_full_dates.miss)
     plt.title(f"missing dates for product {pid}")
-    plt.savefig(f"{pid}_miss_dates.png")
+    plt.savefig(f"plots/{pid}_miss_dates.png")
     plt.close()
 
 # %% missing dates 2
@@ -98,7 +109,7 @@ for pid, df in pid_df.items():
     plt.hist(tdeltas_miss, bins=20)
     plt.title(f"frequencies of missing days in row for product {pid}")
     plt.show()
-    plt.savefig(f"{pid}_dates_gaps_frequencies.png")
+    plt.savefig(f"plots/{pid}_dates_gaps_frequencies.png")
     plt.close()
 
 # Lets just not care about the missing values for now.
@@ -111,7 +122,8 @@ for pid, df in pid_df.items():
 # %% exploring relation of sales and other varibales
 
 # there is a visible spike in sales after a price drop which lasts 
-# otherwise some noise + trend
+# otherwise looks rather noisy
+# visible changes after the beginning of covid pandemia, but the not very significant
 
 for pid, df in pid_df.items():
     # only for visualisation purposes of price changes, no interpretation
@@ -121,7 +133,6 @@ for pid, df in pid_df.items():
     plt.plot(
         df[DATE_COL], df[PRICE_COL],
         df[DATE_COL], df[SALES_COL],
-        df[DATE_COL], df[f"{SALES_COL}_diff_1"],
         df[DATE_COL], df[MARGIN_COL],
         df[DATE_COL], df["pct_change_scaled"],
         linewidth=1)
@@ -129,46 +140,49 @@ for pid, df in pid_df.items():
     # TODO: make separate axis for sales
 
     plt.title(f"sales and related variables of product {pid}")
-    plt.legend([PRICE_COL, SALES_COL, f"{SALES_COL}_diff_1", MARGIN_COL, f"{PRICE_COL}_pct_change_scaled"])
+    plt.legend([PRICE_COL, SALES_COL, MARGIN_COL, f"{PRICE_COL}_pct_change_scaled"])
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(f"{pid}_sales_related.png", dpi=500)
+    plt.savefig(f"plots/{pid}_sales_related.png", dpi=500)
     plt.close()
 
-# %% exploring the sales
-# will be used as an exogenous variable in our model
-# the baseline model will be sarimax
+# %% exploring promotions 1
+# significant change of price will be used as an exogenous variable in sarimax model
 
+
+sale_change_col = f"{SALES_COL}_diff_1"
+pricee_change_col = f"{PRICE_COL}_diff_1"
+
+# try different perspective, not very useful
+# sale_change_col = f"{SALES_COL}_pct_change_1"
+# pricee_change_col = f"{PRICE_COL}_pct_change_1"
+
+# exploring only immediate influence
 for pid, df in pid_df.items():
     # take only noticeable price changes
-    df_changes = df[abs(df.sell_price_pct_change_1) > 0.01]
+    df_changes = df[abs(df.sell_price_pct_change_1) > 0.1]
     # exploring the relation of relative price change and absolute sales change 
-    plt.scatter(df_changes[f"{PRICE_COL}_pct_change_1"], df_changes[f"{SALES_COL}_pct_change_1"])
-    plt.xlabel("price pct change")
-    plt.ylabel("sales pct change")
+    plt.scatter(df_changes[pricee_change_col], df_changes[sale_change_col])
+    plt.xlabel(pricee_change_col)
+    plt.ylabel(sale_change_col)
     plt.title(f"price dynamics of product {pid}")
-    plt.savefig(f"{pid}_price_change_dynamics.png", dpi=500)
+    plt.savefig(f"plots/{pid}_price_change_dynamics.png", dpi=500)
     plt.close()
     
-# after inspecting the resulting figures, it seems that there is a linear 
-# or quadratic relationship, we will include both terms in the sarimax model
-    
-# %% decomposition - TODO
+# After inspecting the resulting figures, it seems that there is a more or less
+# linear relationship between price pct difference and sales difference
+# for a more significant changes in price
+# Might be caused by a constant pool size of price sensitive individuals.
 
-# from statsmodels.tsa.seasonal import seasonal_decompose, STL
-
-# # for pid, df in pid_df.items():
-# df.set_index(pd.DatetimeIndex(df[DATE_COL], freq="D"), drop=False, inplace=True)
-# result = seasonal_decompose(df[SALES_COL], model='additive')
-# fig = result.plot()
-
-
-# # STL
-
+# %% exploring promotions 2
+for pid, df in pid_df.items():
+    # df[[f"{PRICE_COL}_pct_change_1", "price_event_pct"]].plot(title=f"promotions of product {pid}")
+    df[[f"{PRICE_COL}", "price_event"]].plot(title=f"promotions of product {pid}")
 
 # %% stationarity tests
 
 # the results indicate that sales ts for products 0-3 might be (trend-)stationary
+# when looking at plots of their sales, they seem to be little more than a WN
 
 for pid, df in pid_df.items():
     # testing for trend-stationarity
@@ -186,7 +200,7 @@ for pid, df in pid_df.items():
     plot_acf(df[SALES_COL])
     plt.title(f"Autocorrelation of product {pid}")
     # plt.s1how()
-    plt.savefig(f"{pid}_sales_autocorr.png", dpi=500)
+    plt.savefig(f"plots/{pid}_sales_autocorr.png", dpi=500)
 
 # we can observe significant autocorrelation of at least 5th order for each product
 # this would indicate that the MA part of used SARIMAX might be quite long
@@ -198,11 +212,22 @@ for pid, df in pid_df.items():
     plot_pacf(df[SALES_COL])
     plt.title(f"Partial Autocorrelation of product {pid}")
     # plt.s1how()
-    plt.savefig(f"{pid}_sales_pautocorr.png", dpi=500)
+    plt.savefig(f"plots/{pid}_sales_pautocorr.png", dpi=500)
     
 # partial autocorrelations fade rather quickly for most, usualy within lag of 5
-# giv3es some estimate of the ordr of the AR part
+# gives some estimate of the order of the AR part
 
+# %% decomposition - TODO
+
+# from statsmodels.tsa.seasonal import seasonal_decompose, STL
+
+# # for pid, df in pid_df.items():
+# df.set_index(pd.DatetimeIndex(df[DATE_COL], freq="D"), drop=False, inplace=True)
+# result = seasonal_decompose(df[SALES_COL], model='additive')
+# fig = result.plot()
+
+
+# # STL
 
 
 
