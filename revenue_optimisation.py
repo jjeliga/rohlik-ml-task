@@ -1,4 +1,3 @@
-import os
 import pickle
 import json
 import pandas as pd
@@ -22,8 +21,7 @@ from utils import (
     general_transform,
     init_transform,
     is_weekend,
-    add_czech_holidays,
-    identify_promotions
+    add_czech_holidays
     )
 
 # %% script conf
