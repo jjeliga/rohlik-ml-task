@@ -1,4 +1,6 @@
 import os
+import pickle
+import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -28,16 +30,17 @@ from conf import (
    )
 from utils import split_df, general_transform, init_transform
 
+# %% config
 
-# %%
-
+# number of days on the end of available data for testing
 TEST_SIZE = 14
+# assumed seasonal length in our data - weekly "cycles"
 SEASON_LENGTH = 7
 
-# %%
+# %% helper functions
 
 
-def predict(sf: StatsForecast, df_train: pd.DataFrame, df_test: pd.DataFrame, exog_cols: list, level:list=[95]): 
+def get_fitted_and_predict(sf: StatsForecast, df_train: pd.DataFrame, df_test: pd.DataFrame, exog_cols: list, level:list=[95]): 
     """
     Get prediction of all models in `sf` for all dates in df_test and fitted values.
     Uses exogenous variables contained in `df_test` if applicable.
@@ -92,7 +95,6 @@ def pick_best_model(models_metrics: dict, eval_metrics: list):
     return best_models
 
 
-
 def _eval_predictions_single(sf: StatsForecast, df_pred: pd.DataFrame):
     """
     Basic prediction quality evaluation for all models fitted in `sf`.
@@ -106,10 +108,10 @@ def _eval_predictions_single(sf: StatsForecast, df_pred: pd.DataFrame):
     
     model_eval_metrics = defaultdict(dict)
     for model in model_names:
-        model_eval_metrics[model]["ATSD"] = abs(df_pred.y.sum() - df_pred[model].sum())
-        model_eval_metrics[model]["MAE"] = mean_absolute_error(df_pred.y, df_pred[model])
-        model_eval_metrics[model]["MAPE"] = mean_absolute_percentage_error(df_pred.y, df_pred[model]) * 100
-        model_eval_metrics[model]["RMSE"] = np.sqrt(mean_squared_error(df_pred.y, df_pred[model]))
+        model_eval_metrics[model]["ATSD"] = float(abs(df_pred.y.sum() - df_pred[model].sum()))
+        model_eval_metrics[model]["MAE"] = float(mean_absolute_error(df_pred.y, df_pred[model]))
+        model_eval_metrics[model]["MAPE"] = float(mean_absolute_percentage_error(df_pred.y, df_pred[model]) * 100)
+        model_eval_metrics[model]["RMSE"] = float(np.sqrt(mean_squared_error(df_pred.y, df_pred[model])))
         
     return model_eval_metrics
 
@@ -127,6 +129,38 @@ def eval_predictions(fitted_models: dict, predictions: dict):
             print(met)
             
     return pid_eval_metrics
+
+
+def plot_fit_predict(sf, pid, fitted_values, test_predictions, n_fitted=90):
+    """
+    Plots fitted and predicted time series values
+
+    """
+    
+    df_insample_fitted = fitted_values[pid].copy()
+    df_test_pred = test_predictions[pid].copy()
+
+    model_names = [str(m) for m in sf.models]
+    
+    plot_cols = ["y", "ds", *model_names, "AutoARIMA-lo-95", "AutoARIMA-hi-95"]
+    
+    # surprisingly slow, investigate better method to obtain the data
+    
+    df_insample_fitted = df_insample_fitted[-n_fitted:]
+    
+    df_res_vis = pd.concat([df_insample_fitted[plot_cols], df_test_pred[plot_cols]])
+    
+    df_res_vis.rename({"y": "sales", "ds": "date"}, axis=1, inplace=True)
+    df_res_vis.set_index("date", inplace=True)
+    
+    os.makedirs("plots", exist_ok=True)
+    
+    df_res_vis[["sales", *model_names]].plot(linewidth=.5, alpha=.7)
+    plt.fill_between(df_res_vis.index, df_res_vis["AutoARIMA-lo-95"], df_res_vis["AutoARIMA-hi-95"], alpha=.1)
+    plt.axvline(x=df_insample_fitted.ds.iloc[-1], linewidth=.6, color="black")
+    plt.title("fitted and predicted values of product {pid}\n separated by veritcal line")
+    plt.savefig(f"plots/{pid}_fit_predict.png", dpi=500)
+
 
 # %% ETL
 
@@ -193,38 +227,17 @@ for pid in pid_df.keys():
     
     sf.fit(pid_df_train_test[pid]["train"])
     fitted_models[pid] = sf
+    
+# %% save the fitted models
+# currently no versioning
+# if there is a pickled model in the repository,
+# then that one should be considered a champion
+with open("model.pickle", "wb") as outfile:
+    pickle.dump(sf, outfile)
+
 # %% look at arima coefficients
 
 fitted_models["0"].fitted_[0][0].model_["coef"]
-
-
-# %%
-
-# from prophet import Prophet
-# from workalendar.europe import CzechRepublic
-
-# pid="1"
-# dfte = pid_df_train_test[pid]["test"]
-# dftr = pid_df_train_test[pid]["train"]
-
-
-
-# m = Prophet(holidays=holidays)
-# m.add_regressor("sell_price_pct_change_1")
-# m.fit(dftr[["ds", "y", "sell_price_pct_change_1"]])
-
-# forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
-# forecast.yhat
-# dfte.y
-
-# dfte.iloc[7, -1] = -0.2
-# dfte.sell_price_pct_change_1
-
-# forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
-# forecast.yhat
-# dfte.y
-
-
 
 
 # %% get predictions on test set and fitted values
@@ -236,14 +249,17 @@ for pid in pid_df.keys():
     # obtain fitted values and predict sales on test set
     dftr = pid_df_train_test[pid]["train"].copy()
     dfte = pid_df_train_test[pid]["test"].copy()
-    fv, tp = predict(fitted_models[pid], dftr, dfte, exog_cols)
+    fv, tp = get_fitted_and_predict(fitted_models[pid], dftr, dfte, exog_cols)
     fitted_values[pid] = fv
     test_predictions[pid] = tp
 
 # %% evaluate models fit
-
 # AutoARIMA with exogenous variables attains the best scores/fit according to our metrics
+
 fit_eval_metrics = eval_predictions(fitted_models, fitted_values)
+
+with open("fit_eval_metrics.json", "w") as outf:
+    json.dump(fit_eval_metrics, outf)
 
 
 # %% evaluate models on test data
@@ -255,43 +271,16 @@ fit_eval_metrics = eval_predictions(fitted_models, fitted_values)
 
 test_eval_metrics = eval_predictions(fitted_models, test_predictions)
 
-
-# %%
-# these metrics seem to be most directly correlated with business impact
-
-# selection_metrics = ["ATSD", "MAE"]
-# best_models = {
-#     pid: pick_best_model(mm, selection_metrics) for pid, mm in pid_test_eval_metrics.items()
-#     }
-# print(best_models)
+with open("test_eval_metrics.json", "w") as outf:
+    json.dump(test_eval_metrics, outf)
 
 
-# %%
+# %% plot fitted and predicted values
 
-dff_test_pred.set_index("ds", inplace=True)
-dff_test_pred[['y', "AutoARIMA"]].plot()
-
-# %%
+for pid in pid_df.keys():
+    plot_fit_predict(sf, pid, fitted_values, test_predictions)
 
 
-model_names = [str(m) for m in sf.models]
-
-plot_cols = ["y", "ds", *model_names, "AutoARIMA-lo-95", "AutoARIMA-hi-95"]
-
-# surprisingly slow, investigate better method to obtain the data
-
-insample_fcsts_df = [-50:]
-
-df_res_vis = pd.concat([insample_fcsts_df[plot_cols], df_test_pred[plot_cols]])
-
-df_res_vis.rename({"y": "sales", "AutoARIMA": "estimate", "ds": "date"}, axis=1, inplace=True)
-df_res_vis.set_index("date", inplace=True)
-
-df_res_vis[["sales", "estimate"]].plot(linewidth=.5, alpha=.7)
-plt.fill_between(df_res_vis.index, df_res_vis["AutoARIMA-lo-95"], df_res_vis["AutoARIMA-hi-95"], alpha=.2)
-plt.axvline(x=insample_fcsts_df.ds[-1], linewidth=.3)
-plt.title("fitted and predicted values")
-plt.savefig("test_predict.png", dpi=500)
 
 
 
