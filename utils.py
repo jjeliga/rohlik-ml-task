@@ -1,4 +1,6 @@
 import pandas as pd
+from workalendar.europe import CzechRepublic
+
 
 def map_ids(df: pd.DataFrame, id_col: str):
     """
@@ -50,6 +52,43 @@ def split_df(df: pd.DataFrame, id_col: str) -> dict:
     return pid_df   
 
 
+def add_czech_holidays(df: pd.DataFrame, date_col: str, date_format: str):
+    """
+    Enriches input df by indicator of Czech National Holidays
+    and info on one day before start of the holiday ("preparations").
+    Is not exact since holidays might collide with weekends
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        input df containing `date_col` column o datetime type.
+    date_col : str
+        Name of the date column.
+    date_format : str
+        Format of the date column.
+
+    Returns
+    -------
+    Enriched df.
+
+    """
+    cze = CzechRepublic()
+    
+    # get list of all czech public holidays for years present in data
+    start, end = min(df[date_col]).year, max(df[date_col]).year
+    cze_holidays_dates = []
+    for year in range(start, end + 1):
+        cze_holidays_dates += [x[0] for x in cze.holidays(year)]
+        
+    df_hol = pd.DataFrame(pd.to_datetime(cze_holidays_dates, format=date_format))
+    df_hol["holiday"]  = 1
+    df_hol.columns = [date_col, "holiday"]
+
+    df = df.merge(df_hol, how="left", on=date_col)
+    
+    return df
+
+
 def init_transform(
         df: pd.DataFrame,
         date_col: str,
@@ -81,14 +120,17 @@ def init_transform(
 
     Returns
     -------
-    df_prices : TYPE
+    df_prices : pd.DataFrame
         Transformed df.
-    id_map : TYPE
-        DESCRIPTION.
 
     """
     if date_col in df.columns:
         df[date_col] = pd.to_datetime(df[date_col], format=date_format)
+        df["is_weekend"] = df[date_col].apply(
+            lambda x: 1 if x.day_name() in ['Saturday', 'Sunday'] else 0
+            )
+        
+        df = add_czech_holidays(df, date_col, date_format)
     
     if price_col in df.columns and margin_col in df.columns:
         df["buy_price"] = df[price_col] - df[margin_col]
@@ -98,8 +140,8 @@ def init_transform(
     if id_col in df.columns:
         df, id_map = map_ids(df, id_col)
 
-    return df, id_map
-
+    return df
+    
 
 def general_transform(
         df: pd.DataFrame, transform_conf: dict

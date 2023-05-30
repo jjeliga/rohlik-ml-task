@@ -41,16 +41,15 @@ df_prices.describe()
 # %%
 # convert date col to datetime format and map ids for better readability
 
-df_prices, id_map = init_transform(df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
-pids = list(id_map.values())
+df_prices = init_transform(df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
 
 # %% split to individual dfs, necessary for correct pct_change calculation
 pid_df = split_df(df_prices, ID_COL)
 
 
-# %% add percent price change
+# %% make transformations and create feature
 
-for pid in pids:
+for pid in pid_df.keys():
     pid_df[pid] = general_transform(pid_df[pid], TRANSFORM_CONF)
 
 

@@ -87,7 +87,7 @@ def eval_predictions(sf: StatsForecast, df_test_pred):
     model_names = [str(s) for s in sf.fitted_[0]]
 
     # Calculate absolute total sum difference (ATSD),  MAE, MAPE (both have good interpretation) and RMSE.
-    # ATSD is not a standard metric, but might be useful for a setting where only
+    # ATSD is a custom metric, might be useful for a setting where only
     # the absolute volume over a longer period of time is of interest
     
     test_eval_metrics = defaultdict(dict)
@@ -112,6 +112,8 @@ pid_df = split_df(df_prices, ID_COL)
 
 for pid in pids:
     pid_df[pid] = general_transform(pid_df[pid], TRANSFORM_CONF)
+    
+
     
 # %% data for testing
 
