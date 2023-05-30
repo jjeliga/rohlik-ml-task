@@ -26,14 +26,12 @@ from utils import (
     identify_promotions
     )
 
-# %%
+# %% script conf
 
 SELECTED_MODEL = "AutoARIMA"
 FORECAST_HORIZON = 7
 
 # %% helper functions
-
-
 
 def estimate_absolute_margin(df, margin_col, sales_col, window=7):
     """
@@ -87,7 +85,10 @@ def generate_price_adj_sequence(df, price_col, margin_col, price_events_col):
     last_price = df[price_col][-1]
     step = last_price * 0.02
     
-    return np.arange(min_change, max_change, step)
+    seq = np.arange(min_change, max_change, step)
+    # include no change
+    seq = np.append(seq, [0])
+    return seq
 
     
 def add_price_and_events(df, df_fut, price_col, margin_col, price_adj):
@@ -105,6 +106,62 @@ def add_price_and_events(df, df_fut, price_col, margin_col, price_adj):
     
     return df_fut
 
+def estimate_revenue_margin(df, df_fut, model, sales_col, price_col, buy_price_col, exog_cols, h=7):
+    """
+    """
+    levels = [50, 75]
+    y = df[sales_col].values
+    X = df[exog_cols].to_numpy()
+    X_future = df_fut[exog_cols].to_numpy()
+    
+    predictions = model.forward(y, h, X, X_future, level=levels)
+    
+    price = df_fut[price_col].values[0]
+    margin = df_fut[price_col].values[0] - df_fut[buy_price_col].values[0]
+
+    info = {}    
+    info["price"] = price
+    info["sales"] = sum(predictions["mean"])
+    info["revenue"] = price * info["sales"]
+    info["margin"] = margin * info["sales"]
+
+    for hl, lev in product(["hi", "lo"], levels):
+        info[f"sales_{hl}_{lev}"] = sum(predictions[f"{hl}-{lev}"])
+        info[f"revenue_{hl}_{lev}"] = price * info[f"sales_{hl}_{lev}"]
+        info[f"margin_{hl}_{lev}"] = margin * info[f"sales_{hl}_{lev}"]
+    
+    return info
+
+def optimise_revenue(df, model, price_col, buy_price_col, margin_col, sales_col, date_col, date_format, h=7):
+    """
+    """
+    abs_margin = estimate_absolute_margin(df, margin_col, sales_col, h)
+    df_fut = generate_future_data(df, date_col, date_format)
+    
+    price_levels = generate_price_adj_sequence(df, price_col, margin_col, "price_event")
+    
+    estimates = []
+    winning_estimates = []
+    for price_adj in price_levels:
+        df_fut = add_price_and_events(df, df_fut, price_col, margin_col, price_adj)
+        rev_estimates_info = estimate_revenue_margin(
+            df, df_fut, model, sales_col, price_col, buy_price_col, exog_cols, h)
+        estimates.append(rev_estimates_info)
+        
+        if rev_estimates_info["margin"] >= abs_margin:
+            winning_estimates.append(rev_estimates_info)
+            
+    return estimates, winning_estimates
+
+def pick_winning_scenario(estimates, winning_estimates):
+    if winning_estimates:
+        # if there are scenarios with high enough margin
+        # we choose the one with highest revenue
+        return max(winning_estimates, key=lambda x: x['revenue']), True
+    else:
+        # in case that no scenario has high enough margin we take the one
+        # which maximizes margoin and consequently minimizes losses
+        return max(estimates, key=lambda x: x['margin']), False
 
 
 # %% ETL
@@ -133,68 +190,11 @@ with open("exog_cols.json", "r") as fr:
 with open("models.pickle", "rb") as infile:
     models = pickle.load(infile)
     
-
-# %%
-
-def estimate_revenue_margin(df, df_fut, model, sales_col, price_col, buy_price_col, exog_cols, h=7):
-    """
-    """
-    levels = [50, 75]
-    y = df[sales_col].values
-    X = df[exog_cols].to_numpy()
-    X_future = df_fut[exog_cols].to_numpy()
-    
-    predictions = model.forward(y, h, X, X_future, level=levels)
-    
-    price = df_fut[price_col].values[0]
-    margin = df_fut[price_col].values[0] - df_fut[buy_price_col].values[0]
-
-    info = {}    
-    info["price"] = price
-    info["sales"] = sum(predictions["mean"])
-    info["revenue"] = price * info["sales"]
-    info["margin"] = margin * info["sales"]
-
-    # for hl, lev in product(["hi", "lo"], levels):
-    #     info[f"sales_{hl}_{lev}"] = sum(predictions[f"{hl}-{lev}"])
-    #     info[f"revenue_{hl}_{lev}"] = price * info[f"sales_{hl}_{lev}"]
-    #     info[f"margin_{hl}_{lev}"] = margin * info[f"sales_{hl}_{lev}"]
-    
-    return info
-
-def optimise_revenue(df, model, price_col, buy_price_col, margin_col, sales_col, date_col, date_format, h=7):
-    """
-    """
-    abs_margin = estimate_absolute_margin(df, margin_col, sales_col, h)
-    df_fut = generate_future_data(df, date_col, date_format)
-    
-    price_levels = generate_price_adj_sequence(df, price_col, margin_col, "price_event")
-    
-    estimates = []
-    winning_estimates = []
-    for price_adj in price_levels:
-        df_fut = add_price_and_events(df, df_fut, price_col, margin_col, price_adj)
-        rev_estimates_info = estimate_revenue_margin(
-            df, df_fut, model, sales_col, price_col, buy_price_col, exog_cols, h)
-        estimates.append(rev_estimates_info)
-        
-        if rev_estimates_info["margin"] >= abs_margin:
-            winning_estimates.append(rev_estimates_info)
-            
-    return estimates, winning_estimates
-
-def pick_winning_scenario(estimates, winning_estimates):
-    if winning_estimates:
-        
-    else:
-        
-
     
 # %%
-
 
 full_estimates = {}
-winning_estimates = {}
+optimal_scenarios = {}
 for pid, df in pid_df.items():
     
     sf = models[pid]
@@ -208,11 +208,19 @@ for pid, df in pid_df.items():
     estimates, w_estimates = optimise_revenue(
         df, model, PRICE_COL, BUY_PRICE_COL, MARGIN_COL, SALES_COL, DATE_COL, DATE_FORMAT, FORECAST_HORIZON
         )
+    
     full_estimates[pid] = estimates
-    winning_estimates[pid] = winning_estimates
     
-    
-    
-    
+    optimal_scenario, is_better = pick_winning_scenario(estimates, w_estimates)
+    print(f"optimal scenario for product {pid} is:")
+    print(optimal_scenario)
+    optimal_scenarios[pid] = {"scenario": optimal_scenario, "better_than_recent": is_better}
+
+# %%    
+
+with open("optimal_scenarios.json", "w") as fw:
+    json.dump(optimal_scenarios, fw)
+  
+ 
     
         
