@@ -83,7 +83,8 @@ def generate_price_adj_sequence(df, price_col, margin_col, price_events_col):
     min_change = -df[margin_col][-1]
     
     last_price = df[price_col][-1]
-    step = last_price * 0.02
+    # trying changes of .5% magnitude of the current price
+    step = last_price * 0.005
     
     seq = np.arange(min_change, max_change, step)
     # include no change
@@ -108,23 +109,31 @@ def add_price_and_events(df, df_fut, price_col, margin_col, price_adj):
 
 def estimate_revenue_margin(df, df_fut, model, sales_col, price_col, buy_price_col, exog_cols, h=7):
     """
+    Estimates total revenue and margin in `h` days forecast horizon using the 
+    `model` for sales volume estimation based on price change scenario data in 
+    `df_fut`.
     """
+    # statistical confidence levels for the sales prediction
     levels = [50, 75]
     y = df[sales_col].values
     X = df[exog_cols].to_numpy()
     X_future = df_fut[exog_cols].to_numpy()
     
+    # using fitted model to pass through the available data and generate predictions
     predictions = model.forward(y, h, X, X_future, level=levels)
     
     price = df_fut[price_col].values[0]
     margin = df_fut[price_col].values[0] - df_fut[buy_price_col].values[0]
 
-    info = {}    
+    info = {}
+    # computing point estrimates
     info["price"] = price
     info["sales"] = sum(predictions["mean"])
     info["revenue"] = price * info["sales"]
     info["margin"] = margin * info["sales"]
 
+    # confidence intervals for sales, revenue and margin
+    # aggregated values, so the intervals are jsut approximate
     for hl, lev in product(["hi", "lo"], levels):
         info[f"sales_{hl}_{lev}"] = sum(predictions[f"{hl}-{lev}"])
         info[f"revenue_{hl}_{lev}"] = price * info[f"sales_{hl}_{lev}"]
@@ -134,18 +143,27 @@ def estimate_revenue_margin(df, df_fut, model, sales_col, price_col, buy_price_c
 
 def optimise_revenue(df, model, price_col, buy_price_col, margin_col, sales_col, date_col, date_format, h=7):
     """
+    Function to generate sales, revenue and margin estimates using the `model`
+    for sales estimation. Prediction is performed on `h` days forecast horizon.
+    The different scenarios are determined by selected price changes.
     """
+    # estimating current absolute margin level
     abs_margin = estimate_absolute_margin(df, margin_col, sales_col, h)
     df_fut = generate_future_data(df, date_col, date_format)
+    # generating price change options for different scenarios
+    price_adjustments = generate_price_adj_sequence(df, price_col, margin_col, "price_event")
     
-    price_levels = generate_price_adj_sequence(df, price_col, margin_col, "price_event")
-    
+    # estimates for all scenarios
     estimates = []
+    # estimates for scenarios with margin >= abs_margin
     winning_estimates = []
-    for price_adj in price_levels:
+    for price_adj in price_adjustments:
+        # transforming the "future" data according to the new price adjustment
         df_fut = add_price_and_events(df, df_fut, price_col, margin_col, price_adj)
+        # generating the estimates
         rev_estimates_info = estimate_revenue_margin(
             df, df_fut, model, sales_col, price_col, buy_price_col, exog_cols, h)
+        rev_estimates_info["adjustment"] = price_adj
         estimates.append(rev_estimates_info)
         
         if rev_estimates_info["margin"] >= abs_margin:
@@ -154,6 +172,9 @@ def optimise_revenue(df, model, price_col, buy_price_col, margin_col, sales_col,
     return estimates, winning_estimates
 
 def pick_winning_scenario(estimates, winning_estimates):
+    """
+    Finding the best price adjustment scenario in given scenario results.
+    """
     if winning_estimates:
         # if there are scenarios with high enough margin
         # we choose the one with highest revenue
