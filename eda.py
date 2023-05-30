@@ -22,6 +22,7 @@ WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 # %%
 
 os.chdir(WORKDIR)
+os.makedirs("plots", exist_ok=True)
 
 # importing after the change of working directory
 from conf import (
@@ -97,7 +98,7 @@ for pid, missing in missing_dates.items():
     df_full_dates = df_full_dates.fillna(0)
     plt.plot(df_full_dates.date, df_full_dates.miss)
     plt.title(f"missing dates for product {pid}")
-    plt.savefig(f"{pid}_miss_dates.png")
+    plt.savefig(f"plots/{pid}_miss_dates.png")
     plt.close()
 
 # %% missing dates 2
@@ -108,7 +109,7 @@ for pid, df in pid_df.items():
     plt.hist(tdeltas_miss, bins=20)
     plt.title(f"frequencies of missing days in row for product {pid}")
     plt.show()
-    plt.savefig(f"{pid}_dates_gaps_frequencies.png")
+    plt.savefig(f"plots/{pid}_dates_gaps_frequencies.png")
     plt.close()
 
 # Lets just not care about the missing values for now.
@@ -142,7 +143,7 @@ for pid, df in pid_df.items():
     plt.legend([PRICE_COL, SALES_COL, f"{SALES_COL}_diff_1", MARGIN_COL, f"{PRICE_COL}_pct_change_scaled"])
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(f"{pid}_sales_related.png", dpi=500)
+    plt.savefig(f"plots/{pid}_sales_related.png", dpi=500)
     plt.close()
 
 # %% exploring promotions 1
@@ -162,7 +163,7 @@ for pid, df in pid_df.items():
     plt.xlabel("price pct change")
     plt.ylabel("sales pct change")
     plt.title(f"price dynamics of product {pid}")
-    plt.savefig(f"{pid}_price_change_dynamics.png", dpi=500)
+    plt.savefig(f"plots/{pid}_price_change_dynamics.png", dpi=500)
     plt.close()
     
 # after inspecting the resulting figures, it seems that there is a linear 
@@ -201,7 +202,7 @@ for pid, df in pid_df.items():
     plot_acf(df[SALES_COL])
     plt.title(f"Autocorrelation of product {pid}")
     # plt.s1how()
-    plt.savefig(f"{pid}_sales_autocorr.png", dpi=500)
+    plt.savefig(f"plots/{pid}_sales_autocorr.png", dpi=500)
 
 # we can observe significant autocorrelation of at least 5th order for each product
 # this would indicate that the MA part of used SARIMAX might be quite long
@@ -213,7 +214,7 @@ for pid, df in pid_df.items():
     plot_pacf(df[SALES_COL])
     plt.title(f"Partial Autocorrelation of product {pid}")
     # plt.s1how()
-    plt.savefig(f"{pid}_sales_pautocorr.png", dpi=500)
+    plt.savefig(f"plots/{pid}_sales_pautocorr.png", dpi=500)
     
 # partial autocorrelations fade rather quickly for most, usualy within lag of 5
 # giv3es some estimate of the ordr of the AR part
