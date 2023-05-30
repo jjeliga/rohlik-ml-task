@@ -145,7 +145,7 @@ def init_transform(
     return df
     
 
-def identify_promotions(df: pd.DataFrame, price_change_col: str, prom_conf: dict):
+def identify_promotions(df: pd.DataFrame, price_change_col: str, price_drop_threshold: float):
     """
     Tries to identify promotion based on price changes.
 
@@ -168,8 +168,33 @@ def identify_promotions(df: pd.DataFrame, price_change_col: str, prom_conf: dict
     # Promotion is expected to last max prom_conf["max_duration"] days.
     # We consider price change to be a promotion only if cumulative sum
     # of % price changes over the max promotion length is < prom_conf["price_drop_threshold"]
-    roll_pct_change = df[price_change_col].rolling(prom_conf["max_duration"]).sum()
-    df["is_promotion"] = (roll_pct_change < prom_conf["price_drop_threshold"]) * 1
+    
+    
+    # roll_pct_change = df[price_change_col].rolling(prom_conf["max_duration"]).sum()
+    # df["is_promotion"] = (roll_pct_change < prom_conf["price_drop_threshold"]) * 1
+    
+    # clumsy method, but fast enough for now
+    # could look into pandas expanding apply
+    promotions = []
+    cum_discount = 0
+    event_dur = 0
+    for pc in df[price_change_col].values:
+        if pc:
+            cum_discount += pc
+            
+        if cum_discount < price_drop_threshold:
+            promotions.append(cum_discount)
+            event_dur += 1
+        elif 
+        else:
+            is_promotion.append(0)
+            
+        # we want to ignore any 
+        if cum_discount > -.02:
+            cum_discount = 0
+        
+    
+    
     
     return df
 
