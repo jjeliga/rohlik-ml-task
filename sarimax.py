@@ -13,7 +13,6 @@ from statsforecast.models import (
     SeasonalExponentialSmoothingOptimized,
     HoltWinters,
 )
-WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 
 from conf import (
     DATE_FORMAT,

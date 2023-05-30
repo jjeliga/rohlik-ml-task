@@ -17,11 +17,8 @@ import os
 
 pd.set_option('display.max_columns', None)
 
-WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
-
 # %%
 
-os.chdir(WORKDIR)
 os.makedirs("plots", exist_ok=True)
 
 # importing after the change of working directory
@@ -42,13 +39,13 @@ from utils import split_df, general_transform, init_transform
 df_raw = pd.read_csv("ml_task_data.csv")
 print(df_raw.head())
 
-# %%
-df_raw.info() # check NAs
+# %% check NAs
+df_raw.info()
 
-# %%
+# %% check basic stats
 df_raw.describe()
 
-# %%
+# %% initial transdformation
 # convert date col to datetime format and map ids for better readability
 
 df_prices = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
@@ -57,7 +54,7 @@ df_prices = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL,
 pid_df = split_df(df_prices, ID_COL)
 
 
-# %% make transformations and create feature
+# %% make some transformations and create feature columns
 
 for pid in pid_df.keys():
     pid_df[pid] = general_transform(
@@ -65,8 +62,7 @@ for pid in pid_df.keys():
         )
 
 
-# %%
-# check basic statistics per product
+# %% check basic statistics per product
 stat_cols = set(df_prices.columns) - {ID_COL}
 
 for pid, df in pid_df.items():
@@ -74,12 +70,11 @@ for pid, df in pid_df.items():
     print(df[stat_cols].agg(["min", "median", "mean", "max", "count", "std"]))
 
 
-# %%
-# check dates span
+# %% check dates span per product
 df_dates_ranges = df_prices.groupby(ID_COL)[DATE_COL].agg(["min", "max"])
 print(df_dates_ranges)
 
-# %%
+# %% find missing dates per product
 missing_dates = {}
 for pid, df in pid_df.items():
     dmin, dmax = df_dates_ranges.loc["0"]
@@ -116,7 +111,7 @@ for pid, df in pid_df.items():
 # ARIMA estimation procedure can handle missing observations and inappropriate
 # imputation might distort the estimates.
 # Big influence on the final result is not expected since the missing blocks
-# Are mostly of shorter sizes.
+# Are mostly of very short sizes.
 
 
 # %% exploring relation of sales and other varibales
