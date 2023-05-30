@@ -203,7 +203,7 @@ for pid in pid_df.keys():
     
     
 
-# %% load the StatsForecst models
+# %% load the StatsForecst models and exogenous col names
 
 with open("exog_cols.json", "r") as fr:
     exog_cols = json.load(fr)
@@ -212,32 +212,28 @@ with open("models.pickle", "rb") as infile:
     models = pickle.load(infile)
     
     
-# %%
+# %% generating sales, revenue and price estimates for all products
 
-full_estimates = {}
 optimal_scenarios = {}
 for pid, df in pid_df.items():
-    
-    sf = models[pid]
-    
-    # locate model in list
+    # retrieve saved mdoel
+    sf = models[pid]    
     model_names = [str(m) for m in sf.models]
     sel_idx = model_names.index(SELECTED_MODEL)
     model = sf.fitted_[0][sel_idx]
     
-    #
+    # generate the estimates, obtaining aggregated results
     estimates, w_estimates = optimise_revenue(
         df, model, PRICE_COL, BUY_PRICE_COL, MARGIN_COL, SALES_COL, DATE_COL, DATE_FORMAT, FORECAST_HORIZON
         )
     
-    full_estimates[pid] = estimates
-    
     optimal_scenario, is_better = pick_winning_scenario(estimates, w_estimates)
-    print(f"optimal scenario for product {pid} is:")
+    print(f"optimal scenario results for product {pid} is:")
     print(optimal_scenario)
+    
     optimal_scenarios[pid] = {"scenario": optimal_scenario, "better_than_recent": is_better}
 
-# %%    
+# %% saving the results
 
 with open("optimal_scenarios.json", "w") as fw:
     json.dump(optimal_scenarios, fw)
