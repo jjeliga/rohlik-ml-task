@@ -217,7 +217,7 @@ for pid, df in pid_df.items():
     plt.savefig(f"plots/{pid}_sales_pautocorr.png", dpi=500)
     
 # partial autocorrelations fade rather quickly for most, usualy within lag of 5
-# giv3es some estimate of the ordr of the AR part
+# gives some estimate of the order of the AR part
 
 
 
