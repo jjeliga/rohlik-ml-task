@@ -16,7 +16,16 @@ from statsforecast.models import (
 )
 WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 
-from conf import DATE_FORMAT, TRANSFORM_CONF, DATE_COL, ID_COL, PRICE_COL, MARGIN_COL, SALES_COL
+from conf import (
+    DATE_FORMAT,
+    TRANSFORM_CONF,
+    PROMOTION_CONF,
+    ID_COL,
+    DATE_COL,
+    MARGIN_COL,
+    SALES_COL,
+    PRICE_COL
+   )
 from utils import split_df, general_transform, init_transform
 
 
@@ -103,21 +112,20 @@ def eval_predictions(sf: StatsForecast, df_test_pred):
 
 df_prices = pd.read_csv("ml_task_data.csv")
 
-df_prices, id_map = init_transform(
+df_prices = init_transform(
     df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL
     )
-pids = list(id_map.values())
 
 pid_df = split_df(df_prices, ID_COL)
 
-for pid in pids:
-    pid_df[pid] = general_transform(pid_df[pid], TRANSFORM_CONF)
-    
-
+for pid in pid_df.keys():
+    pid_df[pid] = general_transform(
+        pid_df[pid], TRANSFORM_CONF, DATE_COL, PRICE_COL, PROMOTION_CONF
+        )
     
 # %% data for testing
 
-exog_cols = [f"{PRICE_COL}_pct_change_1"]
+exog_cols = ["is_weekend", "holiday", "is_promotion"]  # f"{PRICE_COL}_pct_change_1" ommited for now
 pid_df_train_test = defaultdict(dict)
 
 for pid, df in pid_df.items():
@@ -138,9 +146,9 @@ for pid in pid_df.keys():
     sf = StatsForecast(
         models = [
             AutoARIMA(
-                max_q=5,  # MA order
-                max_p=0,  # AR order
-                max_d=0,  # difference order
+                max_q=7,  # MA order
+                max_p=7,  # AR order
+                max_d=2,  # difference order
                 max_Q=1,
                 max_P=1,
                 max_D=1,
@@ -172,39 +180,29 @@ fitted_models["0"].fitted_[0][0].model_["coef"]
 
 # %%
 
-from prophet import Prophet
-from workalendar.europe import CzechRepublic
+# from prophet import Prophet
+# from workalendar.europe import CzechRepublic
 
-pid="1"
-dfte = pid_df_train_test[pid]["test"]
-dftr = pid_df_train_test[pid]["train"]
-
-cze = CzechRepublic()
-
-start, end = min(dftr.index).year, max(dfte.index).year + 1  # +1 to ensure future
-cze_holidays = []
-for year in range(start, end + 1):
-    cze_holidays += cze.holidays(year)
-
-holidays = pd.DataFrame(cze_holidays, columns=["ds", "holiday"])
-holidays["lower_window"] = 0
-holidays["upper_window"] = 1
+# pid="1"
+# dfte = pid_df_train_test[pid]["test"]
+# dftr = pid_df_train_test[pid]["train"]
 
 
-m = Prophet(holidays=holidays)
-m.add_regressor("sell_price_pct_change_1")
-m.fit(dftr[["ds", "y", "sell_price_pct_change_1"]])
 
-forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
-forecast.yhat
-dfte.y
+# m = Prophet(holidays=holidays)
+# m.add_regressor("sell_price_pct_change_1")
+# m.fit(dftr[["ds", "y", "sell_price_pct_change_1"]])
 
-dfte.iloc[7, -1] = -0.2
-dfte.sell_price_pct_change_1
+# forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
+# forecast.yhat
+# dfte.y
 
-forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
-forecast.yhat
-dfte.y
+# dfte.iloc[7, -1] = -0.2
+# dfte.sell_price_pct_change_1
+
+# forecast = m.predict(dfte[["ds", "sell_price_pct_change_1"]])
+# forecast.yhat
+# dfte.y
 
 
 

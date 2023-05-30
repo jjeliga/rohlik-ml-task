@@ -4,6 +4,11 @@ PRICE_COL = "sell_price"
 MARGIN_COL = "margin"
 SALES_COL = "sales"
 
+PROMOTION_CONF = {
+    "max_duration": 7,
+    "price_drop_threshold": -.1
+    }
+
 DATE_FORMAT = "%Y-%m-%d"
 
 TRANSFORM_CONF = {

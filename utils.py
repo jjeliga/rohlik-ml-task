@@ -1,6 +1,7 @@
 import pandas as pd
 from workalendar.europe import CzechRepublic
 
+from conf import PRICE_COL
 
 def map_ids(df: pd.DataFrame, id_col: str):
     """
@@ -85,6 +86,7 @@ def add_czech_holidays(df: pd.DataFrame, date_col: str, date_format: str):
     df_hol.columns = [date_col, "holiday"]
 
     df = df.merge(df_hol, how="left", on=date_col)
+    df = df.fillna({"holiday": 0})
     
     return df
 
@@ -143,8 +145,37 @@ def init_transform(
     return df
     
 
+def identify_promotions(df: pd.DataFrame, price_change_col: str, prom_conf: dict):
+    """
+    Tries to identify promotion based on price changes.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DESCRIPTION.
+    price_change_col: str
+        name of the column containing price change data
+    prom_conf : dict
+        Configuration for promotion identification.
+
+    Returns
+    -------
+    pd.DataFrame
+        Transformed dataframe.
+
+    """
+    # Approximation, but considered good enough for now.
+    # Promotion is expected to last max prom_conf["max_duration"] days.
+    # We consider price change to be a promotion only if cumulative sum
+    # of % price changes over the max promotion length is < prom_conf["price_drop_threshold"]
+    roll_pct_change = df[price_change_col].rolling(prom_conf["max_duration"]).sum()
+    df["is_promotion"] = (roll_pct_change < prom_conf["price_drop_threshold"]) * 1
+    
+    return df
+
+
 def general_transform(
-        df: pd.DataFrame, transform_conf: dict
+        df: pd.DataFrame, transform_conf: dict, date_col:str, price_col: str, prom_conf: dict
     ) -> pd.DataFrame:
     """
     Transforms a datframe of sales and prices data.
@@ -157,6 +188,12 @@ def general_transform(
     transform_conf : dict
         Config of individual transformations to be performed.
         Sample input: {"pct_change": {"sell_price": [1]}}
+    date_col : str
+        Name of the date column.
+    price_col : str
+        Name of the column with price.
+    prom_conf : dict
+        configuration for promotion identification.
 
     Returns
     -------
@@ -166,21 +203,31 @@ def general_transform(
     """
     if sort_cols := transform_conf.get("sort_cols"):
         df = df.sort_values(sort_cols)
+    
+    if date_col in df.columns:
+        df.set_index(date_col, drop=False, inplace=True)
         
-    # differentiating
-    col_diff_td = transform_conf.get("diff", {})
+    # differentiating transformations
+    col_diff_td = transform_conf.get("diff", {})  # config
     # columns to lists of time lags
     for dc, tdeltas in col_diff_td.items():
         if dc in df.columns:
             for td in tdeltas:
                 df[f"{dc}_diff_{td}"] = df[dc].diff(td)
     
-    # `pct_change` transformation
-    col_pc_td = transform_conf.get("pct_change", {})
+    # `pct_change` transformations
+    col_pc_td = transform_conf.get("pct_change", {})  # config
     # columns to lists of time lags
     for pcc, tdeltas in col_pc_td.items():
         if pcc in df.columns:
             for td in tdeltas:
                 df[f"{pcc}_pct_change_{td}"] = df[pcc].pct_change(td)
+                
+                    
+    if f"{price_col}_pct_change_1" in df.columns:
+        df = identify_promotions(df, f"{price_col}_pct_change_1", prom_conf)
+    else:
+        print("Sales indicator not calculated, update your transformation config for pct_change by {PRICE_COL: [1]}")
+        
                 
     return df

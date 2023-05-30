@@ -24,24 +24,33 @@ WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 os.chdir(WORKDIR)
 
 # importing after the change of working directory
-from conf import DATE_FORMAT, TRANSFORM_CONF, ID_COL, DATE_COL, MARGIN_COL, SALES_COL, PRICE_COL
+from conf import (
+    DATE_FORMAT,
+    TRANSFORM_CONF,
+    PROMOTION_CONF,
+    ID_COL,
+    DATE_COL,
+    MARGIN_COL,
+    SALES_COL,
+    PRICE_COL
+   )
 from utils import split_df, general_transform, init_transform
 
 # %% read data and peek
 
-df_prices = pd.read_csv("ml_task_data.csv")
-print(df_prices.head())
+df_raw = pd.read_csv("ml_task_data.csv")
+print(df_raw.head())
 
 # %%
-df_prices.info() # check NAs
+df_raw.info() # check NAs
 
 # %%
-df_prices.describe()
+df_raw.describe()
 
 # %%
 # convert date col to datetime format and map ids for better readability
 
-df_prices = init_transform(df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
+df_prices = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
 
 # %% split to individual dfs, necessary for correct pct_change calculation
 pid_df = split_df(df_prices, ID_COL)
@@ -50,7 +59,9 @@ pid_df = split_df(df_prices, ID_COL)
 # %% make transformations and create feature
 
 for pid in pid_df.keys():
-    pid_df[pid] = general_transform(pid_df[pid], TRANSFORM_CONF)
+    pid_df[pid] = general_transform(
+        pid_df[pid], TRANSFORM_CONF, DATE_COL, PRICE_COL, PROMOTION_CONF
+        )
 
 
 # %%
@@ -134,7 +145,12 @@ for pid, df in pid_df.items():
     plt.savefig(f"{pid}_sales_related.png", dpi=500)
     plt.close()
 
-# %% exploring the sales
+# %% exploring promotions 1
+for pid, df in pid_df.items():
+    df[[f"{PRICE_COL}_pct_change_1", "is_promotion"]].plot(title=f"promotions of product {pid}")
+
+
+# %% exploring promotions 2
 # will be used as an exogenous variable in our model
 # the baseline model will be sarimax
 
