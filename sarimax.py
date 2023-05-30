@@ -10,11 +10,8 @@ from statsforecast import StatsForecast
 from statsforecast.models import (
     AutoARIMA,
     SeasonalNaive,
-    SeasonalWindowAverage,
     SeasonalExponentialSmoothingOptimized,
     HoltWinters,
-    
-    
 )
 WORKDIR = "c:\\Text\\work_search_summer23\\rohlik\\ml_task"
 
@@ -179,7 +176,7 @@ for pid in pid_df.keys():
     
 # %% data for testing
 
-exog_cols = ["is_weekend", "holiday", "is_promotion"]  # f"{PRICE_COL}_pct_change_1" ommited for now
+exog_cols = ["is_weekend", "holiday", "price_event"]  # f"{PRICE_COL}_pct_change_1" ommited for now
 pid_df_train_test = defaultdict(dict)
 
 for pid, df in pid_df.items():
@@ -218,7 +215,6 @@ for pid in pid_df.keys():
             # try to use those for an estimation of sales with respect to price
             # when trying to maximize profit. The solution would be to create a separate
             # price elasticity model and then try to combine these.            
-          #  SeasonalWindowAverage(season_length=SEASON_LENGTH, window_size=SEASON_LENGTH*2),
             SeasonalNaive(season_length=SEASON_LENGTH) 
             ],
         freq='D',
