@@ -273,6 +273,10 @@ with open("test_eval_metrics.json", "w") as outf:
 
 # %% plot fitted and predicted values
 
+# We can see that ARIMA is able to quickly react to the influence of price change
+# unlike the rest of the models, which would need additional way of estimation.
+# Confidence bands are 95 % for ARIMA.
+
 for pid in pid_df.keys():
     plot_fit_predict(sf, pid, fitted_values, test_predictions)
 
