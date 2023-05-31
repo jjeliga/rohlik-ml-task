@@ -10,6 +10,7 @@
 
 import os
 import warnings
+import json
 import pandas as pd
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from statsmodels.tsa.stattools import adfuller
@@ -50,7 +51,9 @@ print(df_raw.describe())
 # %% initial transdformation
 # convert date col to datetime format and map ids for better readability
 
-df_prices = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
+df_prices, id_map = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
+with open("id_map.json", "w") as fw:
+    json.dump(id_map, fw)
 
 # %% split to individual dfs, necessary for correct pct_change calculation
 pid_df = split_df(df_prices, ID_COL)
