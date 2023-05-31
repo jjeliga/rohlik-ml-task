@@ -186,7 +186,7 @@ def pick_winning_scenario(estimates, winning_estimates):
 # %% ETL
 
 df_raw = pd.read_csv("ml_task_data.csv")
-df_prices = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
+df_prices, _ = init_transform(df_raw, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL)
 
 pid_df = split_df(df_prices, ID_COL)
 

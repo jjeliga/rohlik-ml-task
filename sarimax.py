@@ -162,7 +162,7 @@ def plot_fit_predict(sf, pid, fitted_values, test_predictions, n_fitted=90):
 
 df_prices = pd.read_csv("ml_task_data.csv")
 
-df_prices = init_transform(
+df_prices, _ = init_transform(
     df_prices, DATE_COL, DATE_FORMAT, PRICE_COL, MARGIN_COL, ID_COL
     )
 

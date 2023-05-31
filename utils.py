@@ -152,7 +152,7 @@ def init_transform(
     if id_col in df.columns:
         df, id_map = map_ids(df, id_col)
 
-    return df
+    return df, id_map
     
 
 def identify_promotions(df: pd.DataFrame, prom_conf: float):
