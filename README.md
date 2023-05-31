@@ -41,7 +41,12 @@ The following table summarizes proposed prices for all products and estimated, s
 Code is structured with cell style used in spyder ide. You can run either interactively or generate results only.
 
 ## Notes
-- Although some of the simpler models seemed to perform better on the test set, they are not able to directly incorporate the estimation of price influence on the sales
+- Although some of the simpler models seemed to perform better on the test set, they are not able to directly incorporate the estimation of price influence on the sales and would require combination with other approach using price elasticity. For the sake of simplicity and clarity We decided to not go this way. This might require further investigation.
+- The default seasonality is considered to be weekly since we are dealing with daily data and sales are expected to be influenced mainly by week cycle.
+- No inputation was performed since the main used method can naturally deal with missing values and wrong imputation might distort the estimates.
+- There is visible change in data after the start of the covid pandemic, however, the changes are not big enough to completely drop the preceding dates by default. Might be considered for experiment.
+
+
 ## Python and Packages
 Python version used: 3.8.5
 Required packages can be found in `requirements.txt`
