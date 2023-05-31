@@ -41,10 +41,14 @@ The following table summarizes proposed prices for all products and estimated, s
 Code is structured with cell style used in spyder ide. You can run either interactively or generate results only.
 
 ## Notes
+- We enriched the data by indicators of weekends and czech public holidays. There is definitely room for further feature engineering.
 - Although some of the simpler models seemed to perform better on the test set, they are not able to directly incorporate the estimation of price influence on the sales and would require combination with other approach using price elasticity. For the sake of simplicity and clarity We decided to not go this way. This might require further investigation.
 - The default seasonality is considered to be weekly since we are dealing with daily data and sales are expected to be influenced mainly by week cycle.
 - No inputation was performed since the main used method can naturally deal with missing values and wrong imputation might distort the estimates.
 - There is visible change in data after the start of the covid pandemic, however, the changes are not big enough to completely drop the preceding dates by default. Might be considered for experiment.
+- We have also performed a quick experiment using fb Prophet, but the results were not promising so we decided not to include it in the final solution at all.
+- Some neural network methods might be considered as a next step.
+- Overall, the provided sales time series strongly resemble white noise, so it is possible that no method can easily yield outstanding results.
 
 
 ## Python and Packages
